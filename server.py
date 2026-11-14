@@ -1,4 +1,5 @@
 import os
+import sys
 import re
 import socket
 import configparser
@@ -17,14 +18,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+if getattr(sys, 'frozen', False):
+    base_dir = os.path.dirname(sys.executable)
+else:
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+
 config = configparser.ConfigParser()
-config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.txt")
+config_path = os.path.join(base_dir, "config.txt")
 if not os.path.exists(config_path):
     config_path = "config.txt"
 
 config.read(config_path, encoding="utf-8")
-EXCEL_PATH = config.get("PATHS", "EXCEL_PATH", fallback=r"D:\Karaoke\q2.xlsx").strip('"').strip("'")
-VIDEO_FOLDER = config.get("PATHS", "VIDEO_FOLDER", fallback=r"D:\Karaoke\Videos").strip('"').strip("'")
+EXCEL_PATH = config.get("PATHS", "EXCEL_PATH", fallback=r"J:\q2.xlsx").strip('"').strip("'")
+VIDEO_FOLDER = config.get("PATHS", "VIDEO_FOLDER", fallback=r"J:\Myanmar_5").strip('"').strip("'")
 
 MM_TO_EN_DIGITS = str.maketrans("၀၁၂၃၄၅၆၇၈၉", "0123456789")
 
@@ -39,7 +45,7 @@ def parse_song_entry(text):
         return code_en, title
     return None, text
 
-print("Excel ဖိုင်ကို ဖတ်နေပါသည်:", EXCEL_PATH)
+print("Reading Excel:", EXCEL_PATH)
 songs_db = []
 artists_db = []
 albums_db = []
@@ -74,9 +80,9 @@ if os.path.exists(EXCEL_PATH):
             _, name = parse_song_entry(str(row[1]))
             if name and name != "0":
                 albums_db.append(name)
-    print(f"သီချင်းပေါင်း {len(songs_db)} ပုဒ် ဖတ်ပြီးပါပြီ။")
+    print(f"Loaded {len(songs_db)} songs successfully!")
 else:
-    print("သတိပေးချက်: Excel ဖိုင် မတွေ့ပါ။ config.txt ထဲတွင် လမ်းကြောင်း ပြင်ပေးပါ။")
+    print("WARNING: Excel file not found! Please check config.txt")
 
 vlc_instance = vlc.Instance()
 player = vlc_instance.media_player_new()
@@ -96,7 +102,7 @@ def play_next_in_queue():
             player.set_media(media)
             player.play()
         else:
-            print(f"ဖိုင်မတွေ့ပါ: {file_path}")
+            print(f"File not found: {file_path}")
             play_next_in_queue()
     else:
         current_song = None
@@ -212,3 +218,4 @@ if __name__ == "__main__":
     print(f"Phone App IP Address: {get_local_ip()}")
     print("=" * 50)
     uvicorn.run(app, host="0.0.0.0", port=8000)
+

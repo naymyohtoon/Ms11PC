@@ -35,10 +35,10 @@ VIDEO_FOLDER = config.get("PATHS", "VIDEO_FOLDER", fallback=r"J:\Myanmar_5").str
 MM_TO_EN_DIGITS = str.maketrans("၀၁၂၃၄၅၆၇၈၉", "0123456789")
 
 def parse_song_entry(text):
-    if not isinstance(text, str):
+    if pd.isna(text):
         return None, ""
-    text = text.strip()
-    match = re.match(r"^([၀-၉0-9]+)\s+(.*)$", text)
+    text = str(text).strip()
+    match = re.match(r"^([၀-၉0-9]+)\s*(.*)$", text)
     if match:
         code_en = match.group(1).translate(MM_TO_EN_DIGITS)
         title = match.group(2).strip()
@@ -55,12 +55,16 @@ if os.path.exists(EXCEL_PATH):
     df_r = pd.read_excel(EXCEL_PATH, sheet_name="r", header=None)
     df_s = pd.read_excel(EXCEL_PATH, sheet_name="s", header=None)
 
+    print("Sample rows from sheet q:")
+    for i in range(min(3, len(df_q))):
+        print(f"Row {i}: {list(df_q.iloc[i].dropna().values)}")
+
     for idx, row in df_q.iterrows():
         raw_song = row[1] if len(row) > 1 else None
         artist = str(row[4]).strip() if len(row) > 4 and pd.notna(row[4]) else "Unknown Artist"
         album = str(row[8]).strip() if len(row) > 8 and pd.notna(row[8]) else "Unknown Album"
         code, title = parse_song_entry(raw_song)
-        if code:
+        if code and title:
             songs_db.append({
                 "id": code,
                 "filename": f"a{code}.mpg",
@@ -71,16 +75,17 @@ if os.path.exists(EXCEL_PATH):
 
     for idx, row in df_r.iterrows():
         if len(row) > 1 and pd.notna(row[1]):
-            _, name = parse_song_entry(str(row[1]))
+            _, name = parse_song_entry(row[1])
             if name and name != "0":
                 artists_db.append(name)
 
     for idx, row in df_s.iterrows():
         if len(row) > 1 and pd.notna(row[1]):
-            _, name = parse_song_entry(str(row[1]))
+            _, name = parse_song_entry(row[1])
             if name and name != "0":
                 albums_db.append(name)
-    print(f"Loaded {len(songs_db)} songs successfully!")
+
+    print(f"Loaded {len(songs_db)} songs, {len(artists_db)} artists, {len(albums_db)} albums!")
 else:
     print("WARNING: Excel file not found! Please check config.txt")
 

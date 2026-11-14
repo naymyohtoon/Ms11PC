@@ -95,7 +95,7 @@ def win_to_unicode(text):
     for old, new in canonical_fixes:
         res = res.replace(old, new)
     return res
-    base_dir = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.path.dirname(os.path.abspath(__file__))
+base_dir = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.path.dirname(os.path.abspath(__file__))
 config = configparser.ConfigParser()
 config_path = os.path.join(base_dir, "config.txt")
 if not os.path.exists(config_path): config_path = "config.txt"

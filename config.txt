@@ -1,0 +1,3 @@
+[PATHS]
+EXCEL_PATH = D:\Karaoke\q2.xlsx
+VIDEO_FOLDER = D:\Karaoke\Videos

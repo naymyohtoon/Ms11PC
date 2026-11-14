@@ -50,7 +50,8 @@ def win_to_unicode(text):
     for old, new in [('ခ်', 'ချ'), ('ဂ်', 'ဂျ'), ('ငြ', 'ဉ်'), ('ေြ', 'ြေ'), ('ေျ', 'ျေ'), ('ေွ', 'ွေ'), ('ေှ', 'ှေ'), ('ော', 'ော'), ('ေါ', 'ေါ'), ('ုိ', 'ို'), ('ူိ', 'ို'), ('ံု', 'ုံ'), ('ံူ', 'ုံ'), ('တံ္တာ', 'တ္တာ')]:
         res = res.replace(old, new)
     return res
-    base_dir = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.path.dirname(os.path.abspath(__file__))
+
+base_dir = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.path.dirname(os.path.abspath(__file__))
 config = configparser.ConfigParser()
 config_path = os.path.join(base_dir, "config.txt")
 if not os.path.exists(config_path): config_path = "config.txt"
@@ -179,3 +180,4 @@ def get_local_ip():
 if __name__ == "__main__":
     print("=" * 50); print(f"Phone App IP Address: {get_local_ip()}"); print("=" * 50)
     uvicorn.run(app, host="0.0.0.0", port=8000)
+    

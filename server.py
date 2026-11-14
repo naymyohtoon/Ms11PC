@@ -47,7 +47,8 @@ def win_to_unicode(text):
 
     pre = [
         ('o&', 'သြ'), ('OD;', 'ဦး'), ('OD', 'ဦ'), ('£', 'ဣ'), ('¤', 'ဤ'), ('aMomf', 'ဪ'),
-        ('arwåm', 'မေတ္တာ'), ('wå', 'တ္တ'), ('Wå', 'တ္တ'), ('NyD', 'ပြီ'), ('MuD;', 'ကြီး'), ('MuD', 'ကြီ'),
+        ('arwåm', 'မေတ္တာ'), ('wå', 'တ္တ'), ('Wå', 'တ္တ'), ('EÅ', 'န္တ'), ('eÅ', 'န္တ'),
+        ('NyD', 'ပြီ'), ('MuD;', 'ကြီး'), ('MuD', 'ကြီ'), ('rHk;', 'မုန်း'), ('rHk', 'မုန်'),
         ('jzL;', 'ဖြူး'), ('jzL', 'ဖြူ'), ('jzpf', 'ဖြစ်'), ('jzwf', 'ဖြတ်'), ('jzK', 'ဖြူ'),
         ('a&T', 'ရွှေ'), ('a&S', 'ရွှေ'), ('a&$', 'ရွှေ'), ('aY', 'ရွှေ'),
         ('ES', 'နှ'), ('ET', 'နှ'), ('eS', 'နှ'), ('eT', 'နှ'),
@@ -58,9 +59,11 @@ def win_to_unicode(text):
     for old, new in pre:
         s = s.replace(old, new)
 
-    cons = r'[uc*CipqZnN#X!¡Pwx’“eEyzAbr,&v0o\[Vt3နှမှလှဝှသှယှရှ]'
+    s = s.replace("'", "ဒ").replace('"', "ဒ").replace("3", "ဒ")
+
+    cons = r'[uc*CipqZnN#X!¡Pwx’“eEyzAbr,&v0o\[Vtဒနှမှလှဝှသှယှရှ]'
     s = re.sub(rf'({cons})F', r'င်္\1', s)
-    s = re.sub(rf'a([jBMQL]?{cons})', r'\1ေ', s)
+    s = re.sub(rf'a([jBMQL]?{cons}[STWG]?)', r'\1ေ', s)
     s = re.sub(rf'([jBM])({cons})', r'\2ြ', s)
     s = re.sub(rf'Q({cons})', r'\1ြွ', s)
     s = re.sub(rf'L({cons})', r'\1ြူ', s)
@@ -82,7 +85,7 @@ def win_to_unicode(text):
         ('ော', 'ော'), ('ေါ', 'ေါ'), ('ေါ်', 'ေါ်'), ('ေော်', 'ော်'),
         ('ုိ', 'ို'), ('ူိ', 'ို'), ('ံု', 'ုံ'), ('ံူ', 'ုံ'),
         ('့်', '့်'), ('့း', 'း'), ('့့', '့'),
-        ('ြပူ', 'ဖြူ'), ('ြပူး', 'ဖြူး'), ('ဒေါင်လုဏ်း', 'ဒေါင်လက်')
+        ('ြပူ', 'ဖြူ'), ('ြပူး', 'ဖြူး'), ('မန္ဒလေး', 'မန္တလေး'), ('အပျိုတော်ဂမံုး', 'အပျိုတော်ဂမုန်း')
     ]
     for old, new in fixes:
         res = res.replace(old, new)
@@ -283,4 +286,5 @@ def get_local_ip():
 if __name__ == "__main__":
     print("=" * 50); print(f"Phone App IP Address: {get_local_ip()}"); print("=" * 50)
     uvicorn.run(app, host="0.0.0.0", port=8000)
-        
+
+

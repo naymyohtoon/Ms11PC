@@ -7,23 +7,24 @@ import vlc, uvicorn
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
-FULL_CHAR_MAP = {
+MM_TO_EN = str.maketrans("၀၁၂၃၄၅၆၇၈၉", "0123456789")
+
+CHAR_MAP = {
     'u': 'က', 'c': 'ခ', '*': 'ဂ', 'C': 'ဃ', 'i': 'င',
     'p': 'စ', 'q': 'ဆ', 'Z': 'ဇ', 'ps': 'ဈ', 'n': 'ည', 'N': 'ည', 'Ò': 'ဉ', 'ò': 'ဉ',
     '#': 'ဋ', 'X': 'ဌ', '!': 'ဍ', '¡': 'ဎ', 'P': 'ဏ', 'ó': 'ဏ',
-    'w': 'တ', 'x': 'ထ', '’': 'ဒ', '“': 'ဓ', 'e': 'န', 'E': 'န', 'ø': 'န',
-    'y': '့', 'ù': 'ပ', 'z': 'ဖ', 'A': 'ဗ', 'b': 'ဘ', 'r': 'မ', 'ý': 'မ',
+    'w': 'တ', 'x': 'ထ', '’': 'ဒ', '“': 'ဓ', 'e': 'န', 'E': 'န', 'ø': 'န', '3': 'ဒ',
+    'y': 'ပ', 'ù': 'ပ', 'z': 'ဖ', 'A': 'ဗ', 'b': 'ဘ', 'r': 'မ', 'ý': 'မ',
     ',': 'ယ', '&': 'ရ', 'v': 'လ', '0': 'ဝ', 'o': 'သ', 'ð': 'သ',
     '[': 'ဟ', 'V': 'ဠ', 't': 'အ', 'O': 'ဩ', 'o&': 'သြ', 'aMomf': 'ဪ',
     '£': 'ဣ', '%': 'ဣ', '¤': 'ဤ', '{': 'ဧ', '}': 'ၒ', 'OD;': 'ဦး', 'OD': 'ဦ',
     'ü': 'ဘ', 'ö': 'ဒ', 'ú': 'ဖ', 'û': 'ဗ', 'þ': 'ယ', 'ÿ': 'ရ',
     '"': 'ဒ', "'": 'ဒ', '|': 'ရ', '<': '၎င်း', '>': '။', '?': '၊', 'í': '၌', 'ì': '၍',
     'm': 'ာ', 'g': 'ါ', 'd': 'ိ', 'D': 'ီ', 'k': 'ု', 'K': 'ူ', 'l': 'ူ', 'L': 'ြူ',
-    'J': 'ဲ', 'H': 'ံ', 'h': '့', 'f': '်', ';': 'း', ':': 'င်္', 'F': '်',
-    '/': 'ျ', 's': 'ျ', 'j': 'ြ', 'G': 'ြ', 'B': 'ြ', 'M': 'ြ', '~': 'ြ', '\\': 'ြ',
+    'J': 'ဲ', 'H': 'ံ', 'h': '့', 'Y': '့', 'U': '့', 'f': '်', ';': 'း', ':': 'ာ်',
+    '/': 'ျ', 's': 'ျ', 'j': 'ြ', 'B': 'ြ', 'M': 'ြ', '~': 'ြ', '\\': 'ြ',
     'S': 'ှ', 'T': 'ှ', '^': 'ှ', '`': 'ှ', '4': 'ှ', '7': 'ှ',
-    'W': 'ွ', 'Q': 'ွ', 'R': 'ွ', 'I': 'ွ', '_': 'ွ', '2': 'ွ', '6': 'ွ',
-    'Y': 'ဉ်', '3': 'င်္', '5': 'ြ',
+    'W': 'ွ', 'G': 'ွ', 'Q': 'ြွ', 'R': 'ျွ', '_': 'ွ', '2': 'ွ', '6': 'ွ',
     'uúm': 'က္ကာ', 'uú': 'က္က', 'c©': 'က္ခ', 'u©': 'က္ခ', '*¾': 'ဂ္ဂ', 'C¾': 'ဂ္ဃ',
     'pö': 'စ္စ', 'qä': 'စ္ဆ', 'ZÆ': 'ဇ္ဇ', 'ZÑ': 'ဇ္ဈ', 'n©': 'ဉ္စ', 'nÖ': 'ဉ္ဆ',
     '#Ö': 'ဋ္ဋ', '$': 'ဋ္ဌ', '@': 'ဍ္ဍ', '¡Ö': 'ဍ္ဎ', 'PÖ': 'ဏ္ဍ', 'PØ': 'ဏ္ဌ',
@@ -41,43 +42,49 @@ def win_to_unicode(text):
     if not isinstance(text, str): return ""
     s = text.strip()
     if not s or s == "0": return ""
-    # အထူးတွဲလုံးများ (y သည် ဗျည်း 'ပ' ဖြစ်သည့်နေရာများကို အရင်ကာကွယ်ခြင်း)
+
     pre = [
         ('o&', 'သြ'), ('OD;', 'ဦး'), ('OD', 'ဦ'), ('£', 'ဣ'), ('¤', 'ဤ'), ('aMomf', 'ဪ'),
-        ('arwåm', 'မေတ္တာ'), ('wå', 'တ္တ'), ('Wå', 'တ္တ'),
+        ('arwåm', 'မေတ္တာ'), ('wå', 'တ္တ'), ('Wå', 'တ္တ'), ('NyD', 'ပြီ'),
         ('ES', 'နှ'), ('ET', 'နှ'), ('eS', 'နှ'), ('eT', 'နှ'),
         ('rS', 'မှ'), ('rT', 'မှ'), ('vS', 'လှ'), ('vT', 'လှ'),
         ('0S', 'ဝှ'), ('0T', 'ဝှ'), ('oS', 'သှ'), ('oT', 'သှ'),
         (',S', 'ယှ'), (',T', 'ယှ'), ('&S', 'ရှ'), ('&T', 'ရှ'),
-        ('aY', 'ရွှေ'), ('a&T', 'ရွှေ'), ('a&S', 'ရွှေ'), ('a&$', 'ရွှေ'),
-        ('yw,f', 'ပါတယ်'), ('ygw,f', 'ပါတယ်'), ('yg', 'ပါ'), ('ydk', 'ပို'), ('yef;', 'ပန်း'),
-        ('jyef', 'ပြန်'), ('ay;', 'ပေး'), ('ay:', 'ပေါ်'), ('ayguf', 'ပေါက်'), ('aysmuf', 'ပျောက်'),
-        ('ydkif', 'ပိုင်'), ('ykd;', 'ပိုး'), ('yif', 'ပင်'), ('yGJ', 'ပွဲ'), ('ykH', 'ပုံ')
+        ('aY', 'ရွှေ'), ('a&T', 'ရွှေ'), ('a&S', 'ရွှေ'), ('a&$', 'ရွှေ')
     ]
     for old, new in pre:
         s = s.replace(old, new)
-    # ရှေ့ထိုး အက္ခရာများ (a = ေ, j/B/G/M = ြ) နေရာမှန် ပြန်စီခြင်း
-    cons = r'[uc*CipqZnN#X!¡Pwx’“eEzAbr,&v0o\[Vtပ]'
-    s = re.sub(rf'a([jBGM]?{cons})', r'\1ေ', s)
-    s = re.sub(rf'([jBGM])({cons})', r'\2ြ', s)
+
+    cons = r'[uc*CipqZnN#X!¡Pwx’“eEyzAbr,&v0o\[Vt3]'
+    s = re.sub(rf'({cons})F', r'င်္\1', s)
+
+    s = re.sub(rf'a([jBMQL]?{cons})', r'\1ေ', s)
+    s = re.sub(rf'([jBM])({cons})', r'\2ြ', s)
+    s = re.sub(rf'Q({cons})', r'\1ြွ', s)
+    s = re.sub(rf'L({cons})', r'\1ြူ', s)
+
     out, i = [], 0
     while i < len(s):
-        if i + 3 <= len(s) and s[i:i+3] in FULL_CHAR_MAP: out.append(FULL_CHAR_MAP[s[i:i+3]]); i += 3
-        elif i + 2 <= len(s) and s[i:i+2] in FULL_CHAR_MAP: out.append(FULL_CHAR_MAP[s[i:i+2]]); i += 2
-        elif s[i] in FULL_CHAR_MAP: out.append(FULL_CHAR_MAP[s[i]]); i += 1
-        else: out.append(s[i]); i += 1
+        if i + 3 <= len(s) and s[i:i+3] in CHAR_MAP:
+            out.append(CHAR_MAP[s[i:i+3]]); i += 3
+        elif i + 2 <= len(s) and s[i:i+2] in CHAR_MAP:
+            out.append(CHAR_MAP[s[i:i+2]]); i += 2
+        elif s[i] in CHAR_MAP:
+            out.append(CHAR_MAP[s[i]]); i += 1
+        else:
+            out.append(s[i]); i += 1
     res = "".join(out)
-    # Pyidaungsu Unicode စံနှုန်းအတိုင်း စာလုံးပေါင်း ပြန်ညှိခြင်း
+
     fixes = [
         ('ေြ', 'ြေ'), ('ေျ', 'ျေ'), ('ေွ', 'ွေ'), ('ေှ', 'ှေ'),
-        ('ော', 'ော'), ('ေါ', 'ေါ'),
+        ('ော', 'ော'), ('ေါ', 'ေါ'), ('ေါ်', 'ေါ်'), ('ေော်', 'ော်'),
         ('ုိ', 'ို'), ('ူိ', 'ို'), ('ံု', 'ုံ'), ('ံူ', 'ုံ'),
-        ('့်', '့်'), ('့း', 'း'), ('့့', '့'),
-        ('မပလှ', 'မလှ'), ('ဖို့ပမလို', 'ဖို့မလို'), ('သျှိ', 'ရှိ'), ('ပျို', 'ပျို'), ('စိမ်းသြဖူစိမ်း', 'စိမ်းမြင်းမိုရ်စိမ်း')
+        ('့်', '့်'), ('့း', 'း'), ('့့', '့')
     ]
     for old, new in fixes:
         res = res.replace(old, new)
     return res
+
 base_dir = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.path.dirname(os.path.abspath(__file__))
 config = configparser.ConfigParser()
 config_path = os.path.join(base_dir, "config.txt")
@@ -106,12 +113,18 @@ if os.path.exists(EXCEL_PATH):
         raw_album = row.iloc[8] if len(row) > 8 else (row.iloc[7] if len(row) > 7 else None)
         if pd.notna(raw_code) and pd.notna(raw_title):
             try: code_str = str(int(float(raw_code)))
-            except Exception: code_str = re.sub(r"[^0-9]", "", str(raw_code))
+            except Exception: code_str = re.sub(r"[^0-9]", "", str(raw_code).translate(MM_TO_EN))
             title_uni = win_to_unicode(str(raw_title))
             artist_uni = win_to_unicode(str(raw_artist)) if pd.notna(raw_artist) else "အဆိုတော်အမည်မသိ"
             album_uni = win_to_unicode(str(raw_album)) if pd.notna(raw_album) else "တေးစီးရီးအမည်မသိ"
             if code_str and title_uni:
-                songs_db.append({"id": code_str, "title": title_uni, "artist": artist_uni, "album": album_uni, "has_file": code_str in video_file_map})
+                songs_db.append({
+                    "id": code_str,
+                    "title": title_uni,
+                    "artist": artist_uni,
+                    "album": album_uni,
+                    "has_file": code_str in video_file_map
+                })
                 if artist_uni != "အဆိုတော်အမည်မသိ": artists_set.add(artist_uni)
                 if album_uni != "တေးစီးရီးအမည်မသိ": albums_set.add(album_uni)
 
@@ -147,29 +160,35 @@ def get_status():
 
 @app.get("/search")
 def search_songs(q: str = ""):
-    if not q: return songs_db[:100]
-    ql = q.lower()
-    return [s for s in songs_db if ql in s["title"].lower() or ql in s["artist"].lower() or ql in s["id"]][:150]
+    if not q: return songs_db[:1000]
+    q_clean = q.strip().translate(MM_TO_EN).lower()
+    return [s for s in songs_db if q_clean in s["title"].lower() or q_clean in s["artist"].lower() or q_clean in s["id"]][:500]
 
 @app.get("/browse/artists")
-def get_artists(q: str = ""): return artists_db if not q else [a for a in artists_db if q.lower() in a.lower()]
+def get_artists(q: str = ""):
+    if not q: return artists_db
+    return [a for a in artists_db if q.lower() in a.lower()]
 
 @app.get("/browse/albums")
-def get_albums(q: str = ""): return albums_db if not q else [a for a in albums_db if q.lower() in a.lower()]
+def get_albums(q: str = ""):
+    if not q: return albums_db
+    return [a for a in albums_db if q.lower() in a.lower()]
 
 @app.get("/browse/filter")
 def filter_songs(artist: str = None, album: str = None):
     if artist: return [s for s in songs_db if s["artist"] == artist]
     if album: return [s for s in songs_db if s["album"] == album]
-    return songs_db[:100]
+    return songs_db[:1000]
 
 @app.get("/queue")
 def get_queue(): return queue_list
 
 @app.post("/queue/add/{song_id}")
 def add_to_queue(song_id: str):
-    song = next((s for s in songs_db if s["id"] == song_id), None)
-    if not song or song["id"] not in video_file_map: raise HTTPException(status_code=404, detail="Not found")
+    clean_id = song_id.strip().translate(MM_TO_EN)
+    song = next((s for s in songs_db if s["id"] == clean_id), None)
+    if not song or song["id"] not in video_file_map:
+        raise HTTPException(status_code=404, detail="Not found")
     queue_list.append(song)
     if player.is_playing() == 0 and current_song is None: play_next_in_queue()
     return {"status": "added", "queue": queue_list}
@@ -207,3 +226,5 @@ def get_local_ip():
 if __name__ == "__main__":
     print("=" * 50); print(f"Phone App IP Address: {get_local_ip()}"); print("=" * 50)
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
+

@@ -9,7 +9,7 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 
 MM_TO_EN = str.maketrans("၀၁၂၃၄၅၆၇၈၉", "0123456789")
 
-CHAR_MAP = {
+W54_MAP = {
     'u': 'က', 'c': 'ခ', '*': 'ဂ', 'C': 'ဃ', 'i': 'င',
     'p': 'စ', 'q': 'ဆ', 'Z': 'ဇ', 'ps': 'ဈ', 'n': 'ည', 'N': 'ည', 'Ò': 'ဉ', 'ò': 'ဉ',
     '#': 'ဋ', 'X': 'ဌ', '!': 'ဍ', '¡': 'ဎ', 'P': 'ဏ', 'ó': 'ဏ',
@@ -45,7 +45,7 @@ def win_to_unicode(text):
 
     pre = [
         ('o&', 'သြ'), ('OD;', 'ဦး'), ('OD', 'ဦ'), ('£', 'ဣ'), ('¤', 'ဤ'), ('aMomf', 'ဪ'),
-        ('arwåm', 'မေတ္တာ'), ('wå', 'တ္တ'), ('Wå', 'တ္တ'), ('NyD', 'ပြီ'),
+        ('arwåm', 'မေတ္တာ'), ('wå', 'တ္တ'), ('Wå', 'တ္တ'), ('NyD', 'ပြီ'), ('MuD;', 'ကြီး'), ('MuD', 'ကြီ'),
         ('ES', 'နှ'), ('ET', 'နှ'), ('eS', 'နှ'), ('eT', 'နှ'),
         ('rS', 'မှ'), ('rT', 'မှ'), ('vS', 'လှ'), ('vT', 'လှ'),
         ('0S', 'ဝှ'), ('0T', 'ဝှ'), ('oS', 'သှ'), ('oT', 'သှ'),
@@ -57,7 +57,6 @@ def win_to_unicode(text):
 
     cons = r'[uc*CipqZnN#X!¡Pwx’“eEyzAbr,&v0o\[Vt3]'
     s = re.sub(rf'({cons})F', r'င်္\1', s)
-
     s = re.sub(rf'a([jBMQL]?{cons})', r'\1ေ', s)
     s = re.sub(rf'([jBM])({cons})', r'\2ြ', s)
     s = re.sub(rf'Q({cons})', r'\1ြွ', s)
@@ -65,12 +64,12 @@ def win_to_unicode(text):
 
     out, i = [], 0
     while i < len(s):
-        if i + 3 <= len(s) and s[i:i+3] in CHAR_MAP:
-            out.append(CHAR_MAP[s[i:i+3]]); i += 3
-        elif i + 2 <= len(s) and s[i:i+2] in CHAR_MAP:
-            out.append(CHAR_MAP[s[i:i+2]]); i += 2
-        elif s[i] in CHAR_MAP:
-            out.append(CHAR_MAP[s[i]]); i += 1
+        if i + 3 <= len(s) and s[i:i+3] in W54_MAP:
+            out.append(W54_MAP[s[i:i+3]]); i += 3
+        elif i + 2 <= len(s) and s[i:i+2] in W54_MAP:
+            out.append(W54_MAP[s[i:i+2]]); i += 2
+        elif s[i] in W54_MAP:
+            out.append(W54_MAP[s[i]]); i += 1
         else:
             out.append(s[i]); i += 1
     res = "".join(out)
@@ -95,12 +94,32 @@ VIDEO_ROOT = config.get("PATHS", "VIDEO_ROOT", fallback="J:/").strip('"').strip(
 
 print(f"Scanning video files in {VIDEO_ROOT}...")
 video_file_map = {}
+video_cat_map = {}
+
+def detect_category(folder_path):
+    p = folder_path.lower()
+    if "shann" in p or "shan" in p: return "SHAN"
+    if "rakhine" in p: return "RAKHINE"
+    if "kachin" in p: return "KACHIN"
+    if "paoh" in p: return "PAOH"
+    if "english" in p: return "ENGLISH"
+    if "chinese" in p or "china" in p: return "CHINA"
+    if "india" in p: return "INTERNATIONAL"
+    if "disco" in p: return "DISCO"
+    return "MYANMAR"
+
 if os.path.exists(VIDEO_ROOT):
     for root, dirs, files in os.walk(VIDEO_ROOT):
+        if "bkgvideo" in root.lower() or "discomp3" in root.lower():
+            continue
+        cat = detect_category(root)
         for f in files:
             if f.lower().endswith(('.mp4', '.mpg', '.mpeg', '.dat', '.mkv', '.avi', '.vob')):
                 m = re.match(r"^[aA]?0*(\d+)\.", f)
-                if m: video_file_map[m.group(1)] = os.path.join(root, f)
+                if m:
+                    cid = m.group(1)
+                    video_file_map[cid] = os.path.join(root, f)
+                    video_cat_map[cid] = cat
 print(f"Found {len(video_file_map)} video files on disk!")
 
 songs_db, artists_set, albums_set = [], set(), set()
@@ -118,15 +137,18 @@ if os.path.exists(EXCEL_PATH):
             artist_uni = win_to_unicode(str(raw_artist)) if pd.notna(raw_artist) else "အဆိုတော်အမည်မသိ"
             album_uni = win_to_unicode(str(raw_album)) if pd.notna(raw_album) else "တေးစီးရီးအမည်မသိ"
             if code_str and title_uni:
+                cat_name = video_cat_map.get(code_str, "MYANMAR")
                 songs_db.append({
                     "id": code_str,
                     "title": title_uni,
                     "artist": artist_uni,
                     "album": album_uni,
+                    "category": cat_name,
                     "has_file": code_str in video_file_map
                 })
-                if artist_uni != "အဆိုတော်အမည်မသိ": artists_set.add(artist_uni)
-                if album_uni != "တေးစီးရီးအမည်မသိ": albums_set.add(album_uni)
+                if cat_name == "MYANMAR":
+                    if artist_uni != "အဆိုတော်အမည်မသိ": artists_set.add(artist_uni)
+                    if album_uni != "တေးစီးရီးအမည်မသိ": albums_set.add(album_uni)
 
 artists_db, albums_db = sorted(list(artists_set)), sorted(list(albums_set))
 print(f"Loaded {len(songs_db)} songs, {len(artists_db)} artists, {len(albums_db)} albums!")
@@ -159,10 +181,18 @@ def get_status():
     return {"is_playing": player.is_playing() == 1, "current_song": current_song, "time_ms": player.get_time(), "length_ms": player.get_length(), "volume": player.audio_get_volume(), "vocal_off": vocal_off, "repeat": repeat_mode, "queue_count": len(queue_list)}
 
 @app.get("/search")
-def search_songs(q: str = ""):
-    if not q: return songs_db[:1000]
+def search_songs(q: str = "", category: str = ""):
+    pool = songs_db
+    if category:
+        c_up = category.upper()
+        if c_up == "ETHNIC":
+            pool = [s for s in songs_db if s["category"] in ("SHAN", "RAKHINE", "KACHIN", "PAOH")]
+        else:
+            pool = [s for s in songs_db if s["category"] == c_up]
+    if not q:
+        return pool[:5000]
     q_clean = q.strip().translate(MM_TO_EN).lower()
-    return [s for s in songs_db if q_clean in s["title"].lower() or q_clean in s["artist"].lower() or q_clean in s["id"]][:500]
+    return [s for s in pool if q_clean in s["title"].lower() or q_clean in s["artist"].lower() or q_clean in s["id"]][:2000]
 
 @app.get("/browse/artists")
 def get_artists(q: str = ""):
@@ -178,7 +208,7 @@ def get_albums(q: str = ""):
 def filter_songs(artist: str = None, album: str = None):
     if artist: return [s for s in songs_db if s["artist"] == artist]
     if album: return [s for s in songs_db if s["album"] == album]
-    return songs_db[:1000]
+    return songs_db[:5000]
 
 @app.get("/queue")
 def get_queue(): return queue_list
@@ -226,5 +256,4 @@ def get_local_ip():
 if __name__ == "__main__":
     print("=" * 50); print(f"Phone App IP Address: {get_local_ip()}"); print("=" * 50)
     uvicorn.run(app, host="0.0.0.0", port=8000)
-
 

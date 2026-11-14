@@ -1,284 +1,625 @@
-import os
-import sys
-import re
-import socket
-import configparser
-import pandas as pd
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-import vlc
-import uvicorn
+import 'dart:async';
+import 'dart:convert';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
-app = FastAPI()
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-WIN_CONSONANTS = {
-    'u': 'က', 'c': 'ခ', '*': 'ဂ', 'C': 'ဃ', 'i': 'င',
-    'p': 'စ', 'q': 'ဆ', 'Z': 'ဇ', 'ps': 'ဈ', 'n': 'ဉ', 'N': 'ည',
-    '#': 'ဋ', 'X': 'ဌ', '!': 'ဍ', '¡': 'ဎ', 'P': 'ဏ',
-    'w': 'တ', 'x': 'ထ', '’': 'ဒ', '“': 'ဓ', 'e': 'န',
-    'y': 'ပ', 'z': 'ဖ', 'A': 'ဗ', 'b': 'ဘ', 'r': 'မ',
-    ',': 'ယ', '&': 'ရ', 'v': 'လ', '0': 'ဝ', 'o': 'သ',
-    '[': 'ဟ', 'V': 'ဠ', 't': 'အ', 'O': 'ဩ', 'a': 'ေ', 'o&': 'သြ'
+void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  SystemChrome.setPreferredOrientations([
+    DeviceOrientation.landscapeLeft,
+    DeviceOrientation.landscapeRight,
+  ]);
+  runApp(const MicrostackMI7App());
 }
 
-def win_to_unicode(text):
-    if not isinstance(text, str):
-        return ""
-    s = text.strip()
-    if not s or s == "0":
-        return ""
+class MicrostackMI7App extends StatelessWidget {
+  const MicrostackMI7App({super.key});
 
-    replacements = [
-        ('o&', 'သြ'), ('ps', 'ဈ'), ('OD;', 'ဦး'), ('OD', 'ဦ'), ('£', 'ဣ'), ('¤', 'ဤ'),
-        ('O', 'ဩ'), ('aMomf', 'ဪ'), ('/', 'ျ'), ('j', 'ျ'), ('G', 'ြ'), ('B', 'ြ'),
-        ('M', 'ြ'), ('N', 'ြ'), ('S', 'ှ'), ('T', 'ှ'), ('W', 'ွ'), ('Q', 'ွ'),
-        ('d', 'ိ'), ('D', 'ီ'), ('k', 'ု'), ('K', 'ူ'), ('l', 'ူ'), ('J', 'ဲ'),
-        ('H', 'ံ'), ('h', '့'), ('f', '်'), (';', 'း'), ('m', 'ာ'), ('g', 'ါ'),
-        (':', 'င်္'), ('F', '်'), ('½', 'ွှ'), ('¾', 'ွှ'), ('¿', 'ြွ'), ('À', 'ြွ'),
-        ('Á', 'ျွ'), ('Â', 'ျွ'), ('Ã', 'ျှ'), ('Ä', 'ျှ'), ('Å', 'ြှ'), ('Æ', 'ြှ'),
-        ('Ç', 'ှု'), ('È', 'ှူ'), ('É', 'ွှ'), ('Ê', '်'), ('Ë', 'ျ'), ('Ì', 'ြ'),
-        ('Í', 'ွ'), ('Î', 'ှ'), ('Ï', 'ာ'), ('Ð', 'ါ'), ('Ñ', 'ီ'), ('Ò', 'ိ'),
-        ('Ó', 'ု'), ('Ô', 'ူ'), ('Õ', 'ဲ'), ('Ö', 'ံ'), ('×', '့'), ('Ø', 'း'),
-        ('Ù', '္'), ('Ú', '်'), ('Û', 'ျ'), ('Ü', 'ြ'), ('Ý', 'ွ'), ('Þ', 'ှ'),
-        ('ß', 'ဿ'), ('à', 'ာ'), ('á', 'ါ'), ('â', 'ိ'), ('ã', 'ီ'), ('ä', 'ု'),
-        ('å', 'ူ'), ('æ', 'ေ'), ('ç', 'ဲ'), ('è', 'ံ'), ('é', '့'), ('ê', 'း'),
-        ('ë', '်'), ('ì', 'ျ'), ('í', 'ြ'), ('î', 'ွ'), ('ï', 'ှ'), ('ð', 'သ'),
-        ('ñ', 'ည'), ('ò', 'ဉ'), ('ó', 'ဏ'), ('ô', 'တ'), ('õ', 'ထ'), ('ö', 'ဒ'),
-        ('÷', 'ဓ'), ('ø', 'န'), ('ù', 'ပ'), ('ú', 'ဖ'), ('û', 'ဗ'), ('ü', 'ဘ'),
-        ('ý', 'မ'), ('þ', 'ယ'), ('ÿ', 'ရ'), ('"', 'ဒ'), ("'", 'ဒ'), ('|', 'ရ'),
-        ('~', 'ြ'), ('\\', 'ြ'), ('{', 'ဧ'), ('}', 'ၒ'), ('^', 'ှ'), ('_', 'ွ'),
-        (chr(96), 'ှ'), ('$', 'ဋ္ဌ'), ('%', 'ဣ'), ('@', 'ဍ္ဍ'), ('<', '၎င်း'), ('>', '။'),
-        ('?', '၊'), ('=', 'ည'), ('+', 'ဏ'), ('-', 'ဗ')
-    ]
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Microstack V7.1.5',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData.dark().copyWith(
+        scaffoldBackgroundColor: const Color(0xFF2B2E33),
+      ),
+      home: const MI7HomeScreen(),
+    );
+  }
+}
 
-    s = re.sub(r'a([jBGMN]?[uc*CipqZnN#X!¡Pwx’“eyzAbr,&v0o\[Vt])', r'\1ေ', s)
-    s = re.sub(r'([jBGMN])([uc*CipqZnN#X!¡Pwx’“eyzAbr,&v0o\[Vt])', r'\2ြ', s)
+class MI7HomeScreen extends StatefulWidget {
+  const MI7HomeScreen({super.key});
 
-    out = []
-    i = 0
-    while i < len(s):
-        if i + 1 < len(s) and s[i:i+2] in WIN_CONSONANTS:
-            out.append(WIN_CONSONANTS[s[i:i+2]])
-            i += 2
-        elif s[i] in WIN_CONSONANTS:
-            out.append(WIN_CONSONANTS[s[i]])
-            i += 1
-        else:
-            out.append(s[i])
-            i += 1
-    res = "".join(out)
+  @override
+  State<MI7HomeScreen> createState() => _MI7HomeScreenState();
+}
 
-    for old, new in replacements:
-        res = res.replace(old, new)
+class _MI7HomeScreenState extends State<MI7HomeScreen> {
+  String _serverIp = "10.31.11.192";
+  bool _isConnected = false;
+  bool _isPlaying = false;
+  bool _vocalOff = false;
+  bool _repeat = false;
+  double _volume = 80;
+  int _queueCount = 0;
+  Map<String, dynamic>? _currentSong;
 
-    return res
+  String _screenMode = "HOME";
+  String _listTitle = "";
+  List<dynamic> _items = [];
+  bool _isLoading = false;
+  String _numberInput = "";
+  final TextEditingController _searchCtrl = TextEditingController();
 
-if getattr(sys, 'frozen', False):
-    base_dir = os.path.dirname(sys.executable)
-else:
-    base_dir = os.path.dirname(os.path.abspath(__file__))
+  Timer? _timer;
 
-config = configparser.ConfigParser()
-config_path = os.path.join(base_dir, "config.txt")
-if not os.path.exists(config_path):
-    config_path = "config.txt"
+  @override
+  void initState() {
+    super.initState();
+    _loadIp();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) => _fetchStatus());
+  }
 
-config.read(config_path, encoding="utf-8")
-EXCEL_PATH = config.get("PATHS", "EXCEL_PATH", fallback=r"J:\q2.xlsx").strip('"').strip("'")
-VIDEO_FOLDER = config.get("PATHS", "VIDEO_FOLDER", fallback=r"J:\Myanmar_5").strip('"').strip("'")
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
 
-print("Reading Excel:", EXCEL_PATH)
-songs_db = []
-artists_db = []
-albums_db = []
+  Future<void> _loadIp() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _serverIp = prefs.getString('server_ip') ?? "10.31.11.192";
+    });
+  }
 
-if os.path.exists(EXCEL_PATH):
-    df_q = pd.read_excel(EXCEL_PATH, sheet_name="q", header=None)
-    df_r = pd.read_excel(EXCEL_PATH, sheet_name="r", header=None)
-    df_s = pd.read_excel(EXCEL_PATH, sheet_name="s", header=None)
+  Future<void> _saveIp(String ip) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('server_ip', ip);
+    setState(() => _serverIp = ip);
+  }
 
-    for idx, row in df_q.iterrows():
-        raw_code = row.iloc[1] if len(row) > 1 else None
-        raw_title = row.iloc[2] if len(row) > 2 else None
-        raw_artist = row.iloc[4] if len(row) > 4 else None
-        raw_album = row.iloc[8] if len(row) > 8 else (row.iloc[7] if len(row) > 7 else None)
+  String get baseUrl => "http://$_serverIp:8000";
 
-        if pd.notna(raw_code) and pd.notna(raw_title):
-            try:
-                code_str = str(int(float(raw_code)))
-            except Exception:
-                code_str = re.sub(r"[^0-9]", "", str(raw_code))
+  Future<void> _fetchStatus() async {
+    try {
+      final res = await http.get(Uri.parse("$baseUrl/status")).timeout(const Duration(seconds: 2));
+      if (res.statusCode == 200) {
+        final data = json.decode(utf8.decode(res.bodyBytes));
+        setState(() {
+          _isConnected = true;
+          _isPlaying = data['is_playing'] ?? false;
+          _currentSong = data['current_song'];
+          _vocalOff = data['vocal_off'] ?? false;
+          _repeat = data['repeat'] ?? false;
+          _queueCount = data['queue_count'] ?? 0;
+          if (data['volume'] != null && data['volume'] >= 0) {
+            _volume = (data['volume'] as num).toDouble().clamp(0, 100);
+          }
+        });
+      }
+    } catch (_) {
+      if (_isConnected) setState(() => _isConnected = false);
+    }
+  }
 
-            title_uni = win_to_unicode(str(raw_title))
-            artist_uni = win_to_unicode(str(raw_artist)) if pd.notna(raw_artist) else "အဆိုတော်အမည်မသိ"
-            album_uni = win_to_unicode(str(raw_album)) if pd.notna(raw_album) else "Album အမည်မသိ"
+  Future<void> _control(String action, {int value = 0}) async {
+    try {
+      await http.post(Uri.parse("$baseUrl/control/$action?value=$value"));
+      _fetchStatus();
+    } catch (_) {}
+  }
 
-            if code_str and title_uni:
-                songs_db.append({
-                    "id": code_str,
-                    "filename": f"a{code_str}.mpg",
-                    "title": title_uni,
-                    "artist": artist_uni,
-                    "album": album_uni
-                })
+  Future<void> _loadData(String mode, String title, String endpoint) async {
+    setState(() {
+      _screenMode = mode;
+      _listTitle = title;
+      _isLoading = true;
+      _items = [];
+    });
+    try {
+      final res = await http.get(Uri.parse("$baseUrl$endpoint"));
+      if (res.statusCode == 200) {
+        setState(() {
+          _items = json.decode(utf8.decode(res.bodyBytes));
+          _isLoading = false;
+        });
+      }
+    } catch (_) {
+      setState(() => _isLoading = false);
+    }
+  }
 
-    for idx, row in df_r.iterrows():
-        val = row.iloc[2] if (len(row) > 2 and pd.notna(row.iloc[2]) and not isinstance(row.iloc[2], (int, float))) else (row.iloc[1] if len(row) > 1 else None)
-        if pd.notna(val):
-            name_uni = win_to_unicode(str(val))
-            if name_uni and not name_uni.isdigit():
-                artists_db.append(name_uni)
+  Future<void> _addSong(String id) async {
+    try {
+      final res = await http.post(Uri.parse("$baseUrl/queue/add/$id"));
+      if (res.statusCode == 200) {
+        _fetchStatus();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("ကုဒ်နံပါတ် ($id) ကို လက်ရွေးစင်ထဲ ထည့်ပြီးပါပြီ"), duration: const Duration(seconds: 1)),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("ကုဒ်နံပါတ် ($id) ဗီဒီယိုဖိုင် စက်ထဲတွင် မတွေ့ပါ"), backgroundColor: Colors.red),
+          );
+        }
+      }
+    } catch (_) {}
+  }
 
-    for idx, row in df_s.iterrows():
-        val = row.iloc[2] if (len(row) > 2 and pd.notna(row.iloc[2]) and not isinstance(row.iloc[2], (int, float))) else (row.iloc[1] if len(row) > 1 else None)
-        if pd.notna(val):
-            name_uni = win_to_unicode(str(val))
-            if name_uni and not name_uni.isdigit():
-                albums_db.append(name_uni)
+  void _showIpDialog() {
+    final ctrl = TextEditingController(text: _serverIp);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1F2429),
+        title: const Text("PC Server IP ချိတ်ဆက်ရန်", style: TextStyle(color: Colors.tealAccent)),
+        content: TextField(
+          controller: ctrl,
+          decoration: const InputDecoration(labelText: "PC IP Address", border: OutlineInputBorder()),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("ပိတ်မည်")),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.tealAccent, foregroundColor: Colors.black),
+            onPressed: () {
+              _saveIp(ctrl.text.trim());
+              Navigator.pop(ctx);
+            },
+            child: const Text("ချိတ်ဆက်မည်"),
+          ),
+        ],
+      ),
+    );
+  }
 
-    print(f"Loaded {len(songs_db)} songs, {len(artists_db)} artists, {len(albums_db)} albums!")
-else:
-    print("WARNING: Excel file not found! Please check config.txt")
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: SafeArea(
+        child: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Color(0xFF3A3F45), Color(0xFF23272B)],
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+            ),
+          ),
+          child: Column(
+            children: [
+              _buildTopBar(),
+              Expanded(child: _buildMainContent()),
+              _buildBottomControlBar(),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
-vlc_instance = vlc.Instance()
-player = vlc_instance.media_player_new()
-player.set_fullscreen(True)
+  Widget _buildTopBar() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      color: Colors.black26,
+      child: Row(
+        children: [
+          const Text("Microstack", style: TextStyle(color: Color(0xFF00E676), fontSize: 20, fontWeight: FontWeight.bold, fontStyle: FontStyle.italic)),
+          const SizedBox(width: 6),
+          const Text("V7.1.5", style: TextStyle(color: Colors.white70, fontSize: 12)),
+          const SizedBox(width: 12),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.white,
+              foregroundColor: Colors.black87,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            ),
+            icon: const Icon(Icons.playlist_play, color: Colors.green, size: 20),
+            label: Text("လက်ရွေးစင် ($_queueCount)", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+            onPressed: () => _loadData("QUEUE", "လက်ရွေးစင် သီချင်းစာရင်း", "/queue"),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(color: Colors.black45, borderRadius: BorderRadius.circular(8)),
+              child: Text(
+                _currentSong != null
+                    ? "ဖွင့်နေသည်: [${_currentSong!['id']}] ${_currentSong!['title']} - ${_currentSong!['artist']}"
+                    : "ရွေးချယ်ထားသော သီချင်းမရှိသေးပါ",
+                style: const TextStyle(color: Colors.tealAccent, fontSize: 13),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          GestureDetector(
+            onTap: _showIpDialog,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: _isConnected ? Colors.green.shade800 : Colors.red.shade800,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  Icon(_isConnected ? Icons.wifi : Icons.wifi_off, size: 16, color: Colors.white),
+                  const SizedBox(width: 4),
+                  Text(_isConnected ? "Connected" : "IP ချိတ်ရန်", style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
-queue_list = []
-current_song = None
-vocal_off = False
-
-def play_next_in_queue():
-    global current_song
-    if len(queue_list) > 0:
-        current_song = queue_list.pop(0)
-        file_path = os.path.join(VIDEO_FOLDER, current_song["filename"])
-        if os.path.exists(file_path):
-            media = vlc_instance.media_new(file_path)
-            player.set_media(media)
-            player.play()
-        else:
-            print(f"File not found: {file_path}")
-            play_next_in_queue()
-    else:
-        current_song = None
-        player.stop()
-
-@app.get("/status")
-def get_status():
-    state = str(player.get_state())
-    if "Ended" in state and len(queue_list) > 0:
-        play_next_in_queue()
-    return {
-        "is_playing": player.is_playing() == 1,
-        "current_song": current_song,
-        "time_ms": player.get_time(),
-        "length_ms": player.get_length(),
-        "volume": player.audio_get_volume(),
-        "vocal_off": vocal_off,
-        "queue_count": len(queue_list)
+  Widget _buildMainContent() {
+    if (_screenMode == "HOME" || _screenMode == "SUB_MYANMAR") {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Row(
+              children: [
+                _mi7CategoryCard("မြန်မာသီချင်းများ", "မြန်မာ", const Color(0xFF00796B), () {
+                  setState(() => _screenMode = _screenMode == "SUB_MYANMAR" ? "HOME" : "SUB_MYANMAR");
+                }),
+                _mi7CategoryCard("China Song", "中文歌", const Color(0xFF37474F), () {
+                  _loadData("LIST_SONGS", "China Songs", "/search?q=");
+                }),
+                _mi7CategoryCard("English Songs", "ENGLISH", const Color(0xFF37474F), () {
+                  _loadData("LIST_SONGS", "English Songs", "/search?q=");
+                }),
+                _mi7CategoryCard("ရှမ်း၊ ကချင်၊ ရခိုင်\nကရင်၊ ပအိုဝ်", "တိုင်းရင်းသား", const Color(0xFF00695C), () {
+                  _loadData("LIST_SONGS", "တိုင်းရင်းသား သီချင်းများ", "/search?q=");
+                }),
+                _mi7CategoryCard("Japan|Korea|Thai\nVietnam|India", "INTERNATIONAL", const Color(0xFF37474F), () {
+                  _loadData("LIST_SONGS", "International Songs", "/search?q=");
+                }),
+                _mi7CategoryCard("Disco Songs", "DISCO", const Color(0xFF37474F), () {
+                  _loadData("LIST_SONGS", "Disco Songs", "/search?q=");
+                }),
+                _mi7CategoryCard("Number Input", "NUMBER", const Color(0xFF00838F), () {
+                  setState(() {
+                    _numberInput = "";
+                    _screenMode = "NUMBER_PAD";
+                  });
+                }),
+              ],
+            ),
+            if (_screenMode == "SUB_MYANMAR") ...[
+              const SizedBox(height: 14),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _mi7SubCard(Icons.person, "အဆိုတော်", Colors.pink.shade700, () {
+                    _searchCtrl.clear();
+                    _loadData("LIST_ARTISTS", "အဆိုတော် စာရင်း", "/browse/artists");
+                  }),
+                  _mi7SubCard(Icons.album, "တေးစီးရီး", Colors.orange.shade800, () {
+                    _searchCtrl.clear();
+                    _loadData("LIST_ALBUMS", "တေးစီးရီး စာရင်း", "/browse/albums");
+                  }),
+                  _mi7SubCard(Icons.music_video, "သီချင်းအမည်", Colors.blue.shade700, () {
+                    _searchCtrl.clear();
+                    _loadData("LIST_SONGS", "သီချင်းအမည် စာရင်း", "/search?q=");
+                  }),
+                ],
+              ),
+            ],
+          ],
+        ),
+      );
     }
 
-@app.get("/search")
-def search_songs(q: str = ""):
-    if not q:
-        return songs_db[:50]
-    q_lower = q.lower()
-    results = [
-        s for s in songs_db
-        if q_lower in s["title"].lower() or q_lower in s["artist"].lower() or q_lower in s["id"]
-    ]
-    return results[:100]
+    if (_screenMode == "NUMBER_PAD") {
+      return _buildNumberPad();
+    }
 
-@app.get("/browse/artists")
-def get_artists():
-    return artists_db
+    return _buildListView();
+  }
 
-@app.get("/browse/albums")
-def get_albums():
-    return albums_db
+  Widget _mi7CategoryCard(String topText, String bottomText, Color color, VoidCallback onTap) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          height: 115,
+          margin: const EdgeInsets.symmetric(horizontal: 4),
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(colors: [color, color.withOpacity(0.6)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.tealAccent.withOpacity(0.5), width: 1.5),
+            boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 4, offset: Offset(0, 3))],
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(topText, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
+              const SizedBox(height: 10),
+              Text(bottomText, style: const TextStyle(color: Colors.amberAccent, fontSize: 13, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
-@app.get("/browse/filter")
-def filter_songs(artist: str = None, album: str = None):
-    if artist:
-        return [s for s in songs_db if artist in s["artist"]]
-    if album:
-        return [s for s in songs_db if album in s["album"]]
-    return songs_db[:50]
+  Widget _mi7SubCard(IconData icon, String label, Color color, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 140,
+        height: 95,
+        margin: const EdgeInsets.symmetric(horizontal: 8),
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.white54, width: 1.5),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 36, color: Colors.white),
+            const SizedBox(height: 6),
+            Text(label, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
+          ],
+        ),
+      ),
+    );
+  }
 
-@app.get("/queue")
-def get_queue():
-    return queue_list
+  Widget _buildNumberPad() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 240,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.tealAccent)),
+              child: Text(
+                _numberInput.isEmpty ? "ကုဒ်နံပါတ် ရိုက်ပါ" : _numberInput,
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: _numberInput.isEmpty ? Colors.grey : Colors.amberAccent),
+                textAlign: TextAlign.center,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.red.shade700, padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12)),
+                  icon: const Icon(Icons.backspace),
+                  label: const Text("ဖျက်မည်"),
+                  onPressed: () {
+                    if (_numberInput.isNotEmpty) {
+                      setState(() => _numberInput = _numberInput.substring(0, _numberInput.length - 1));
+                    }
+                  },
+                ),
+                const SizedBox(width: 12),
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green.shade700, padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12)),
+                  icon: const Icon(Icons.play_arrow),
+                  label: const Text("ဖွင့်မည် (Add)"),
+                  onPressed: () {
+                    if (_numberInput.isNotEmpty) {
+                      _addSong(_numberInput);
+                      setState(() => _numberInput = "");
+                    }
+                  },
+                ),
+              ],
+            ),
+          ],
+        ),
+        const SizedBox(width: 30),
+        SizedBox(
+          width: 260,
+          child: GridView.count(
+            shrinkWrap: true,
+            crossAxisCount: 3,
+            childAspectRatio: 1.6,
+            mainAxisSpacing: 6,
+            crossAxisSpacing: 6,
+            children: ["1", "2", "3", "4", "5", "6", "7", "8", "9", "C", "0", "OK"].map((key) {
+              return ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF37474F)),
+                onPressed: () {
+                  if (key == "C") {
+                    setState(() => _numberInput = "");
+                  } else if (key == "OK") {
+                    if (_numberInput.isNotEmpty) {
+                      _addSong(_numberInput);
+                      setState(() => _numberInput = "");
+                    }
+                  } else {
+                    setState(() => _numberInput += key);
+                  }
+                },
+                child: Text(key, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+              );
+            }).toList(),
+          ),
+        ),
+      ],
+    );
+  }
 
-@app.post("/queue/add/{song_id}")
-def add_to_queue(song_id: str):
-    song = next((s for s in songs_db if s["id"] == song_id), None)
-    if not song:
-        raise HTTPException(status_code=404, detail="Song not found")
-    queue_list.append(song)
-    if player.is_playing() == 0 and current_song is None:
-        play_next_in_queue()
-    return {"status": "added", "queue": queue_list}
+  Widget _buildListView() {
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          color: Colors.black38,
+          child: Row(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.arrow_back, color: Colors.tealAccent),
+                onPressed: () => setState(() => _screenMode = "SUB_MYANMAR"),
+              ),
+              Text(_listTitle, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.amberAccent)),
+              const SizedBox(width: 20),
+              if (_screenMode != "QUEUE")
+                Expanded(
+                  child: SizedBox(
+                    height: 36,
+                    child: TextField(
+                      controller: _searchCtrl,
+                      onChanged: (val) {
+                        if (_screenMode == "LIST_ARTISTS") _loadData("LIST_ARTISTS", _listTitle, "/browse/artists?q=${Uri.encodeComponent(val)}");
+                        if (_screenMode == "LIST_ALBUMS") _loadData("LIST_ALBUMS", _listTitle, "/browse/albums?q=${Uri.encodeComponent(val)}");
+                        if (_screenMode == "LIST_SONGS") _loadData("LIST_SONGS", _listTitle, "/search?q=${Uri.encodeComponent(val)}");
+                      },
+                      decoration: InputDecoration(
+                        hintText: "ရှာဖွေရန် ရိုက်ထည့်ပါ...",
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                        filled: true,
+                        fillColor: Colors.black45,
+                        prefixIcon: const Icon(Icons.search, size: 18),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : _items.isEmpty
+                  ? const Center(child: Text("စာရင်း မတွေ့ပါ"))
+                  : ListView.builder(
+                      itemCount: _items.length,
+                      itemBuilder: (ctx, idx) {
+                        final item = _items[idx];
+                        if (_screenMode == "LIST_ARTISTS" || _screenMode == "LIST_ALBUMS") {
+                          return ListTile(
+                            dense: true,
+                            leading: CircleAvatar(radius: 14, backgroundColor: Colors.teal, child: Text("${idx + 1}", style: const TextStyle(fontSize: 11))),
+                            title: Text(item.toString(), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                            trailing: const Icon(Icons.chevron_right, color: Colors.tealAccent),
+                            onTap: () {
+                              final qParam = _screenMode == "LIST_ARTISTS"
+                                  ? "/browse/filter?artist=${Uri.encodeComponent(item.toString())}"
+                                  : "/browse/filter?album=${Uri.encodeComponent(item.toString())}";
+                              _loadData("LIST_SONGS", item.toString(), qParam);
+                            },
+                          );
+                        }
+                        if (_screenMode == "QUEUE") {
+                          return ListTile(
+                            dense: true,
+                            leading: CircleAvatar(radius: 14, backgroundColor: Colors.amber, child: Text("${idx + 1}", style: const TextStyle(color: Colors.black, fontSize: 11))),
+                            title: Text("[${item['id']}] ${item['title']}", style: const TextStyle(fontWeight: FontWeight.bold)),
+                            subtitle: Text(item['artist'] ?? ""),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.vertical_align_top, color: Colors.greenAccent),
+                                  onPressed: () async {
+                                    await http.post(Uri.parse("$baseUrl/queue/priority/$idx"));
+                                    _loadData("QUEUE", _listTitle, "/queue");
+                                  },
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.delete, color: Colors.redAccent),
+                                  onPressed: () async {
+                                    await http.delete(Uri.parse("$baseUrl/queue/remove/$idx"));
+                                    _loadData("QUEUE", _listTitle, "/queue");
+                                  },
+                                ),
+                              ],
+                            ),
+                          );
+                        }
+                        final bool hasFile = item['has_file'] == true;
+                        return ListTile(
+                          dense: true,
+                          leading: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: hasFile ? Colors.teal.shade800 : Colors.grey.shade800,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(item['id'] ?? "", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                          ),
+                          title: Text(item['title'] ?? "", style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: hasFile ? Colors.white : Colors.grey)),
+                          subtitle: Text("${item['artist']} • ${item['album']}", style: const TextStyle(fontSize: 12, color: Colors.white60)),
+                          trailing: IconButton(
+                            icon: Icon(Icons.add_circle, color: hasFile ? Colors.tealAccent : Colors.grey, size: 28),
+                            onPressed: () => _addSong(item['id']),
+                          ),
+                        );
+                      },
+                    ),
+        ),
+      ],
+    );
+  }
 
-@app.post("/queue/priority/{index}")
-def move_to_top(index: int):
-    if 0 <= index < len(queue_list):
-        song = queue_list.pop(index)
-        queue_list.insert(0, song)
-    return {"queue": queue_list}
+  Widget _buildBottomControlBar() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+      color: Colors.black54,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          _bottomBtn(_isPlaying ? Icons.pause : Icons.play_arrow, "Play/Pause", Colors.pinkAccent, () => _control("play_pause")),
+          _bottomBtn(Icons.stop, "Stop", Colors.redAccent, () => _control("stop")),
+          _bottomBtn(Icons.repeat, "Repeat", _repeat ? Colors.amber : Colors.purpleAccent, () => _control("repeat")),
+          _bottomBtn(Icons.fast_rewind, "<<<<", Colors.lightBlueAccent, () => _control("rewind")),
+          _bottomBtn(Icons.fast_forward, ">>>>", Colors.lightBlueAccent, () => _control("forward")),
+          _bottomBtn(Icons.replay, "Re-Start", Colors.pink, () => _control("restart")),
+          _bottomBtn(Icons.skip_next, "Next", Colors.pink, () => _control("next")),
+          _bottomBtn(Icons.home, "HOME", Colors.greenAccent, () => setState(() => _screenMode = "HOME")),
+          _bottomBtn(Icons.mic, _vocalOff ? "Music" : "Vocal", _vocalOff ? Colors.amber : Colors.pinkAccent, () => _control("vocal_toggle")),
+          _bottomBtn(Icons.volume_down, "Vol-", Colors.cyanAccent, () {
+            setState(() => _volume = (_volume - 10).clamp(0, 100));
+            _control("volume", value: _volume.toInt());
+          }),
+          _bottomBtn(Icons.volume_up, "Vol+", Colors.cyanAccent, () {
+            setState(() => _volume = (_volume + 10).clamp(0, 100));
+            _control("volume", value: _volume.toInt());
+          }),
+          _bottomBtn(Icons.volume_off, "Mute", _volume == 0 ? Colors.red : Colors.blueGrey, () {
+            setState(() => _volume = _volume == 0 ? 80 : 0);
+            _control("volume", value: _volume.toInt());
+          }),
+        ],
+      ),
+    );
+  }
 
-@app.delete("/queue/remove/{index}")
-def remove_from_queue(index: int):
-    if 0 <= index < len(queue_list):
-        queue_list.pop(index)
-    return {"queue": queue_list}
-
-@app.post("/control/{action}")
-def control_player(action: str, value: int = 0):
-    global vocal_off
-    if action == "play_pause":
-        if player.is_playing():
-            player.pause()
-        else:
-            player.play()
-    elif action == "stop":
-        player.stop()
-    elif action == "next":
-        play_next_in_queue()
-    elif action == "restart":
-        player.set_time(0)
-    elif action == "volume":
-        player.audio_set_volume(value)
-    elif action == "seek":
-        player.set_time(value)
-    elif action == "vocal_toggle":
-        vocal_off = not vocal_off
-        if vocal_off:
-            player.audio_set_channel(4)
-        else:
-            player.audio_set_channel(1)
-    return {"status": "ok", "vocal_off": vocal_off}
-
-def get_local_ip():
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("8.8.8.8", 80))
-        ip = next(iter(s.getsockname()))
-        s.close()
-        return ip
-    except Exception:
-        return "127.0.0.1"
-
-if __name__ == "__main__":
-    print("=" * 50)
-    print(f"Phone App IP Address: {get_local_ip()}")
-    print("=" * 50)
-    uvicorn.run(app, host="0.0.0.0", port=8000)
-    
+  Widget _bottomBtn(IconData icon, String label, Color color, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: const BoxDecoration(color: Colors.white12, shape: BoxShape.circle),
+            child: Icon(icon, color: color, size: 18),
+          ),
+          const SizedBox(height: 2),
+          Text(label, style: const TextStyle(fontSize: 9, color: Colors.white70)),
+        ],
+      ),
+    );
+  }
+}

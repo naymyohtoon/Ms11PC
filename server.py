@@ -42,6 +42,8 @@ def win_to_unicode(text):
     if not isinstance(text, str): return ""
     s = text.strip()
     if not s or s == "0": return ""
+    if any('\u1000' <= ch <= '\u109F' for ch in s):
+        return s
 
     pre = [
         ('o&', 'သြ'), ('OD;', 'ဦး'), ('OD', 'ဦ'), ('£', 'ဣ'), ('¤', 'ဤ'), ('aMomf', 'ဪ'),
@@ -125,11 +127,11 @@ print(f"Found {len(video_file_map)} video files on disk!")
 songs_db, artists_set, albums_set = [], set(), set()
 if os.path.exists(EXCEL_PATH):
     df_q = pd.read_excel(EXCEL_PATH, sheet_name="q", header=None)
-    for idx, row in df_q.iterrows():
-        raw_code = row.iloc if len(row) > 1 else None
-        raw_title = row.iloc if len(row) > 2 else None
-        raw_artist = row.iloc if len(row) > 4 else None
-        raw_album = row.iloc if len(row) > 8 else (row.iloc if len(row) > 7 else None)
+    for row in df_q.itertuples(index=False):
+        raw_code = row[1] if len(row) > 1 else None
+        raw_title = row[2] if len(row) > 2 else None
+        raw_artist = row[4] if len(row) > 4 else None
+        raw_album = row[8] if len(row) > 8 else (row[7] if len(row) > 7 else None)
         if pd.notna(raw_code) and pd.notna(raw_title):
             try: code_str = str(int(float(raw_code)))
             except Exception: code_str = re.sub(r"[^0-9]", "", str(raw_code).translate(MM_TO_EN))
@@ -250,10 +252,10 @@ def control_player(action: str, value: int = 0):
 def get_local_ip():
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); s.connect(("8.8.8.8", 80))
-        ip = s.getsockname(); s.close(); return ip
+        ip = s.getsockname()[0]; s.close(); return ip
     except Exception: return "127.0.0.1"
 
 if __name__ == "__main__":
     print("=" * 50); print(f"Phone App IP Address: {get_local_ip()}"); print("=" * 50)
     uvicorn.run(app, host="0.0.0.0", port=8000)
-
+    

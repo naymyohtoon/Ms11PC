@@ -18,6 +18,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ==========================================
+# Win Innwa မှ Myanmar Unicode အတိအကျ ပြောင်းစနစ်
+# ==========================================
 WIN_CONSONANTS = {
     'u': 'က', 'c': 'ခ', '*': 'ဂ', 'C': 'ဃ', 'i': 'င',
     'p': 'စ', 'q': 'ဆ', 'Z': 'ဇ', 'ps': 'ဈ', 'n': 'ဉ', 'N': 'ည',
@@ -37,6 +40,7 @@ def win_to_unicode(text):
 
     s = re.sub(r'a([jBGMN]?[uc*CipqZnN#X!¡Pwx’“eyzAbr,&v0o\[VtE])', r'\1ေ', s)
     s = re.sub(r'([jBGMN])([uc*CipqZnN#X!¡Pwx’“eyzAbr,&v0o\[VtE])', r'\2ြ', s)
+
     s = s.replace('ES', 'နှ').replace('ET', 'နှ').replace('E', 'န')
 
     out = []
@@ -85,8 +89,8 @@ if not os.path.exists(config_path):
     config_path = "config.txt"
 
 config.read(config_path, encoding="utf-8")
-EXCEL_PATH = config.get("PATHS", "EXCEL_PATH", fallback=r"J:\q2.xlsx").strip('"').strip("'")
-VIDEO_ROOT = config.get("PATHS", "VIDEO_ROOT", fallback=r"J:\").strip().strip('"').strip("'")
+EXCEL_PATH = config.get("PATHS", "EXCEL_PATH", fallback="J:/q2.xlsx").strip('"').strip("'")
+VIDEO_ROOT = config.get("PATHS", "VIDEO_ROOT", fallback="J:/").strip().strip('"').strip("'")
 
 print(f"Scanning video files in {VIDEO_ROOT} (including all subfolders)...")
 video_file_map = {}
@@ -281,7 +285,7 @@ def get_local_ip():
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))
-        ip = next(iter(s.getsockname()))
+        ip = s.getsockname()[0]
         s.close()
         return ip
     except Exception:

@@ -48,18 +48,20 @@ def win_to_unicode(text):
     pre = [
         ('o&', 'သြ'), ('OD;', 'ဦး'), ('OD', 'ဦ'), ('£', 'ဣ'), ('¤', 'ဤ'), ('aMomf', 'ဪ'),
         ('arwåm', 'မေတ္တာ'), ('wå', 'တ္တ'), ('Wå', 'တ္တ'), ('NyD', 'ပြီ'), ('MuD;', 'ကြီး'), ('MuD', 'ကြီ'),
+        ('jzL;', 'ဖြူး'), ('jzL', 'ဖြူ'), ('jzpf', 'ဖြစ်'), ('jzwf', 'ဖြတ်'), ('jzK', 'ဖြူ'),
+        ('a&T', 'ရွှေ'), ('a&S', 'ရွှေ'), ('a&$', 'ရွှေ'), ('aY', 'ရွှေ'),
+        ('aESmif', 'နှောင်'), ('arSmf', 'မှော်'), ('avS', 'လှေ'), ('avT', 'လှေ'),
         ('ES', 'နှ'), ('ET', 'နှ'), ('eS', 'နှ'), ('eT', 'နှ'),
         ('rS', 'မှ'), ('rT', 'မှ'), ('vS', 'လှ'), ('vT', 'လှ'),
         ('0S', 'ဝှ'), ('0T', 'ဝှ'), ('oS', 'သှ'), ('oT', 'သှ'),
-        (',S', 'ယှ'), (',T', 'ယှ'), ('&S', 'ရှ'), ('&T', 'ရှ'),
-        ('aY', 'ရွှေ'), ('a&T', 'ရွှေ'), ('a&S', 'ရွှေ'), ('a&$', 'ရွှေ')
+        (',S', 'ယှ'), (',T', 'ယှ'), ('&S', 'ရှ'), ('&T', 'ရှ')
     ]
     for old, new in pre:
         s = s.replace(old, new)
 
     cons = r'[uc*CipqZnN#X!¡Pwx’“eEyzAbr,&v0o\[Vt3]'
     s = re.sub(rf'({cons})F', r'င်္\1', s)
-    s = re.sub(rf'a([jBMQL]?{cons})', r'\1ေ', s)
+    s = re.sub(rf'a([jBMQL]?{cons}[STWG]?)', r'\1ေ', s)
     s = re.sub(rf'([jBM])({cons})', r'\2ြ', s)
     s = re.sub(rf'Q({cons})', r'\1ြွ', s)
     s = re.sub(rf'L({cons})', r'\1ြူ', s)
@@ -80,7 +82,8 @@ def win_to_unicode(text):
         ('ေြ', 'ြေ'), ('ေျ', 'ျေ'), ('ေွ', 'ွေ'), ('ေှ', 'ှေ'),
         ('ော', 'ော'), ('ေါ', 'ေါ'), ('ေါ်', 'ေါ်'), ('ေော်', 'ော်'),
         ('ုိ', 'ို'), ('ူိ', 'ို'), ('ံု', 'ုံ'), ('ံူ', 'ုံ'),
-        ('့်', '့်'), ('့း', 'း'), ('့့', '့')
+        ('့်', '့်'), ('့း', 'း'), ('့့', '့'),
+        ('ြပူ', 'ဖြူ'), ('ြပူး', 'ဖြူး'), ('ဒေါင်လုဏ်း', 'ဒေါင်လက်')
     ]
     for old, new in fixes:
         res = res.replace(old, new)
@@ -125,35 +128,59 @@ if os.path.exists(VIDEO_ROOT):
 print(f"Found {len(video_file_map)} video files on disk!")
 
 songs_db, artists_set, albums_set = [], set(), set()
+seen_ids = set()
+
 if os.path.exists(EXCEL_PATH):
-    df_q = pd.read_excel(EXCEL_PATH, sheet_name="q", header=None)
-    for row in df_q.itertuples(index=False):
-        raw_code = row[1] if len(row) > 1 else None
-        raw_title = row[2] if len(row) > 2 else None
-        raw_artist = row[4] if len(row) > 4 else None
-        raw_album = row[8] if len(row) > 8 else (row[7] if len(row) > 7 else None)
-        if pd.notna(raw_code) and pd.notna(raw_title):
-            try: code_str = str(int(float(raw_code)))
-            except Exception: code_str = re.sub(r"[^0-9]", "", str(raw_code).translate(MM_TO_EN))
-            title_uni = win_to_unicode(str(raw_title))
-            artist_uni = win_to_unicode(str(raw_artist)) if pd.notna(raw_artist) else "အဆိုတော်အမည်မသိ"
-            album_uni = win_to_unicode(str(raw_album)) if pd.notna(raw_album) else "တေးစီးရီးအမည်မသိ"
-            if code_str and title_uni:
-                cat_name = video_cat_map.get(code_str, "MYANMAR")
-                songs_db.append({
-                    "id": code_str,
-                    "title": title_uni,
-                    "artist": artist_uni,
-                    "album": album_uni,
-                    "category": cat_name,
-                    "has_file": code_str in video_file_map
-                })
-                if cat_name == "MYANMAR":
-                    if artist_uni != "အဆိုတော်အမည်မသိ": artists_set.add(artist_uni)
-                    if album_uni != "တေးစီးရီးအမည်မသိ": albums_set.add(album_uni)
+    xls = pd.ExcelFile(EXCEL_PATH)
+    for sheet in xls.sheet_names:
+        if sheet.lower() in ("r", "s"):
+            continue
+        df_q = pd.read_excel(xls, sheet_name=sheet, header=None)
+        for row in df_q.itertuples(index=False):
+            raw_code = row if len(row) > 1 else None
+            raw_title = row if len(row) > 2 else None
+            raw_artist = row if len(row) > 4 else None
+            raw_album = row if len(row) > 8 else (row if len(row) > 7 else None)
+            if pd.notna(raw_code) and pd.notna(raw_title):
+                try: code_str = str(int(float(raw_code)))
+                except Exception: code_str = re.sub(r"[^0-9]", "", str(raw_code).translate(MM_TO_EN))
+                if not code_str or code_str in seen_ids:
+                    continue
+                title_uni = win_to_unicode(str(raw_title))
+                artist_uni = win_to_unicode(str(raw_artist)) if pd.notna(raw_artist) else "အဆိုတော်အမည်မသိ"
+                album_uni = win_to_unicode(str(raw_album)) if pd.notna(raw_album) else "တေးစီးရီးအမည်မသိ"
+                if title_uni:
+                    seen_ids.add(code_str)
+                    cat_name = video_cat_map.get(code_str, "MYANMAR")
+                    songs_db.append({
+                        "id": code_str,
+                        "title": title_uni,
+                        "artist": artist_uni,
+                        "album": album_uni,
+                        "category": cat_name,
+                        "has_file": code_str in video_file_map
+                    })
+                    if cat_name == "MYANMAR":
+                        if artist_uni != "အဆိုတော်အမည်မသိ": artists_set.add(artist_uni)
+                        if album_uni != "တေးစီးရီးအမည်မသိ": albums_set.add(album_uni)
+
+# Excel ထဲတွင် မပါသေးသော English, China, Shan, Rakhine, Disco ဗီဒီယိုဖိုင်များကို အလိုအလျောက် စာရင်းသွင်းခြင်း
+for cid, fpath in video_file_map.items():
+    if cid not in seen_ids:
+        seen_ids.add(cid)
+        cat_name = video_cat_map.get(cid, "MYANMAR")
+        fname = os.path.splitext(os.path.basename(fpath))
+        songs_db.append({
+            "id": cid,
+            "title": f"{cat_name} Song ({fname})",
+            "artist": cat_name,
+            "album": os.path.basename(os.path.dirname(fpath)),
+            "category": cat_name,
+            "has_file": True
+        })
 
 artists_db, albums_db = sorted(list(artists_set)), sorted(list(albums_set))
-print(f"Loaded {len(songs_db)} songs, {len(artists_db)} artists, {len(albums_db)} albums!")
+print(f"Loaded {len(songs_db)} total songs, {len(artists_db)} artists, {len(albums_db)} albums!")
 
 vlc_instance = vlc.Instance()
 player = vlc_instance.media_player_new()
@@ -252,10 +279,10 @@ def control_player(action: str, value: int = 0):
 def get_local_ip():
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); s.connect(("8.8.8.8", 80))
-        ip = s.getsockname()[0]; s.close(); return ip
+        ip = s.getsockname(); s.close(); return ip
     except Exception: return "127.0.0.1"
 
 if __name__ == "__main__":
     print("=" * 50); print(f"Phone App IP Address: {get_local_ip()}"); print("=" * 50)
     uvicorn.run(app, host="0.0.0.0", port=8000)
-    
+                    

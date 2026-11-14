@@ -19,7 +19,7 @@ W54_MAP = {
     '[': 'ဟ', 'V': 'ဠ', 't': 'အ', 'O': 'ဩ', 'o&': 'သြ', 'aMomf': 'ဪ',
     '£': 'ဣ', '%': 'ဣ', '¤': 'ဤ', '{': 'ဧ', '}': 'ၒ', 'OD;': 'ဦး', 'OD': 'ဦ',
     'ü': 'ဘ', 'ö': 'ဒ', 'ú': 'ဖ', 'û': 'ဗ', 'þ': 'ယ', 'ÿ': 'ရ',
-    '"': 'ဒ', "'": 'ဒ', '|': 'ရ', '<': '၎င်း', '>': '။', '?': '၊', 'í': '၌', 'ì': '၍',
+    '"': 'ဒ', "'": 'ဒ', '|': 'ု', '<': '၎င်း', '>': '။', '?': '၊', 'í': '၌', 'ì': '၍',
     'm': 'ာ', 'g': 'ါ', 'd': 'ိ', 'D': 'ီ', 'k': 'ု', 'K': 'ူ', 'l': 'ူ', 'L': 'ြူ',
     'J': 'ဲ', 'H': 'ံ', 'h': '့', 'Y': '့', 'U': '့', 'f': '်', ';': 'း', ':': 'ာ်',
     '/': 'ျ', 's': 'ျ', 'j': 'ြ', 'B': 'ြ', 'M': 'ြ', '~': 'ြ', '\\': 'ြ',
@@ -126,10 +126,10 @@ songs_db, artists_set, albums_set = [], set(), set()
 if os.path.exists(EXCEL_PATH):
     df_q = pd.read_excel(EXCEL_PATH, sheet_name="q", header=None)
     for idx, row in df_q.iterrows():
-        raw_code = row.iloc[1] if len(row) > 1 else None
-        raw_title = row.iloc[2] if len(row) > 2 else None
-        raw_artist = row.iloc[4] if len(row) > 4 else None
-        raw_album = row.iloc[8] if len(row) > 8 else (row.iloc[7] if len(row) > 7 else None)
+        raw_code = row.iloc if len(row) > 1 else None
+        raw_title = row.iloc if len(row) > 2 else None
+        raw_artist = row.iloc if len(row) > 4 else None
+        raw_album = row.iloc if len(row) > 8 else (row.iloc if len(row) > 7 else None)
         if pd.notna(raw_code) and pd.notna(raw_title):
             try: code_str = str(int(float(raw_code)))
             except Exception: code_str = re.sub(r"[^0-9]", "", str(raw_code).translate(MM_TO_EN))
@@ -250,7 +250,7 @@ def control_player(action: str, value: int = 0):
 def get_local_ip():
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); s.connect(("8.8.8.8", 80))
-        ip = s.getsockname()[0]; s.close(); return ip
+        ip = s.getsockname(); s.close(); return ip
     except Exception: return "127.0.0.1"
 
 if __name__ == "__main__":

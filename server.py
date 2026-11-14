@@ -18,6 +18,68 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+WIN_CONSONANTS = {
+    'u': 'က', 'c': 'ခ', '*': 'ဂ', 'C': 'ဃ', 'i': 'င',
+    'p': 'စ', 'q': 'ဆ', 'Z': 'ဇ', 'ps': 'ဈ', 'n': 'ဉ', 'N': 'ည',
+    '#': 'ဋ', 'X': 'ဌ', '!': 'ဍ', '¡': 'ဎ', 'P': 'ဏ',
+    'w': 'တ', 'x': 'ထ', '’': 'ဒ', '“': 'ဓ', 'e': 'န',
+    'y': 'ပ', 'z': 'ဖ', 'A': 'ဗ', 'b': 'ဘ', 'r': 'မ',
+    ',': 'ယ', '&': 'ရ', 'v': 'လ', '0': 'ဝ', 'o': 'သ',
+    '[': 'ဟ', 'V': 'ဠ', 't': 'အ', 'O': 'ဩ', 'a': 'ေ', 'o&': 'သြ'
+}
+
+def win_to_unicode(text):
+    if not isinstance(text, str):
+        return ""
+    s = text.strip()
+    if not s or s == "0":
+        return ""
+
+    replacements = [
+        ('o&', 'သြ'), ('ps', 'ဈ'), ('OD;', 'ဦး'), ('OD', 'ဦ'), ('£', 'ဣ'), ('¤', 'ဤ'),
+        ('O', 'ဩ'), ('aMomf', 'ဪ'), ('/', 'ျ'), ('j', 'ျ'), ('G', 'ြ'), ('B', 'ြ'),
+        ('M', 'ြ'), ('N', 'ြ'), ('S', 'ှ'), ('T', 'ှ'), ('W', 'ွ'), ('Q', 'ွ'),
+        ('d', 'ိ'), ('D', 'ီ'), ('k', 'ု'), ('K', 'ူ'), ('l', 'ူ'), ('J', 'ဲ'),
+        ('H', 'ံ'), ('h', '့'), ('f', '်'), (';', 'း'), ('m', 'ာ'), ('g', 'ါ'),
+        (':', 'င်္'), ('F', '်'), ('½', 'ွှ'), ('¾', 'ွှ'), ('¿', 'ြွ'), ('À', 'ြွ'),
+        ('Á', 'ျွ'), ('Â', 'ျွ'), ('Ã', 'ျှ'), ('Ä', 'ျှ'), ('Å', 'ြှ'), ('Æ', 'ြှ'),
+        ('Ç', 'ှု'), ('È', 'ှူ'), ('É', 'ွှ'), ('Ê', '်'), ('Ë', 'ျ'), ('Ì', 'ြ'),
+        ('Í', 'ွ'), ('Î', 'ှ'), ('Ï', 'ာ'), ('Ð', 'ါ'), ('Ñ', 'ီ'), ('Ò', 'ိ'),
+        ('Ó', 'ု'), ('Ô', 'ူ'), ('Õ', 'ဲ'), ('Ö', 'ံ'), ('×', '့'), ('Ø', 'း'),
+        ('Ù', '္'), ('Ú', '်'), ('Û', 'ျ'), ('Ü', 'ြ'), ('Ý', 'ွ'), ('Þ', 'ှ'),
+        ('ß', 'ဿ'), ('à', 'ာ'), ('á', 'ါ'), ('â', 'ိ'), ('ã', 'ီ'), ('ä', 'ု'),
+        ('å', 'ူ'), ('æ', 'ေ'), ('ç', 'ဲ'), ('è', 'ံ'), ('é', '့'), ('ê', 'း'),
+        ('ë', '်'), ('ì', 'ျ'), ('í', 'ြ'), ('î', 'ွ'), ('ï', 'ှ'), ('ð', 'သ'),
+        ('ñ', 'ည'), ('ò', 'ဉ'), ('ó', 'ဏ'), ('ô', 'တ'), ('õ', 'ထ'), ('ö', 'ဒ'),
+        ('÷', 'ဓ'), ('ø', 'န'), ('ù', 'ပ'), ('ú', 'ဖ'), ('û', 'ဗ'), ('ü', 'ဘ'),
+        ('ý', 'မ'), ('þ', 'ယ'), ('ÿ', 'ရ'), ('"', 'ဒ'), ("'", 'ဒ'), ('|', 'ရ'),
+        ('~', 'ြ'), ('\\', 'ြ'), ('{', 'ဧ'), ('}', 'ၒ'), ('^', 'ှ'), ('_', 'ွ'),
+        (chr(96), 'ှ'), ('$', 'ဋ္ဌ'), ('%', 'ဣ'), ('@', 'ဍ္ဍ'), ('<', '၎င်း'), ('>', '။'),
+        ('?', '၊'), ('=', 'ည'), ('+', 'ဏ'), ('-', 'ဗ')
+    ]
+
+    s = re.sub(r'a([jBGMN]?[uc*CipqZnN#X!¡Pwx’“eyzAbr,&v0o\[Vt])', r'\1ေ', s)
+    s = re.sub(r'([jBGMN])([uc*CipqZnN#X!¡Pwx’“eyzAbr,&v0o\[Vt])', r'\2ြ', s)
+
+    out = []
+    i = 0
+    while i < len(s):
+        if i + 1 < len(s) and s[i:i+2] in WIN_CONSONANTS:
+            out.append(WIN_CONSONANTS[s[i:i+2]])
+            i += 2
+        elif s[i] in WIN_CONSONANTS:
+            out.append(WIN_CONSONANTS[s[i]])
+            i += 1
+        else:
+            out.append(s[i])
+            i += 1
+    res = "".join(out)
+
+    for old, new in replacements:
+        res = res.replace(old, new)
+
+    return res
+
 if getattr(sys, 'frozen', False):
     base_dir = os.path.dirname(sys.executable)
 else:
@@ -32,19 +94,6 @@ config.read(config_path, encoding="utf-8")
 EXCEL_PATH = config.get("PATHS", "EXCEL_PATH", fallback=r"J:\q2.xlsx").strip('"').strip("'")
 VIDEO_FOLDER = config.get("PATHS", "VIDEO_FOLDER", fallback=r"J:\Myanmar_5").strip('"').strip("'")
 
-MM_TO_EN_DIGITS = str.maketrans("၀၁၂၃၄၅၆၇၈၉", "0123456789")
-
-def parse_song_entry(text):
-    if pd.isna(text):
-        return None, ""
-    text = str(text).strip()
-    match = re.match(r"^([၀-၉0-9]+)\s*(.*)$", text)
-    if match:
-        code_en = match.group(1).translate(MM_TO_EN_DIGITS)
-        title = match.group(2).strip()
-        return code_en, title
-    return None, text
-
 print("Reading Excel:", EXCEL_PATH)
 songs_db = []
 artists_db = []
@@ -55,35 +104,44 @@ if os.path.exists(EXCEL_PATH):
     df_r = pd.read_excel(EXCEL_PATH, sheet_name="r", header=None)
     df_s = pd.read_excel(EXCEL_PATH, sheet_name="s", header=None)
 
-    print("Sample rows from sheet q:")
-    for i in range(min(3, len(df_q))):
-        print(f"Row {i}: {list(df_q.iloc[i].dropna().values)}")
-
     for idx, row in df_q.iterrows():
-        raw_song = row[1] if len(row) > 1 else None
-        artist = str(row[4]).strip() if len(row) > 4 and pd.notna(row[4]) else "Unknown Artist"
-        album = str(row[8]).strip() if len(row) > 8 and pd.notna(row[8]) else "Unknown Album"
-        code, title = parse_song_entry(raw_song)
-        if code and title:
-            songs_db.append({
-                "id": code,
-                "filename": f"a{code}.mpg",
-                "title": title,
-                "artist": artist,
-                "album": album
-            })
+        raw_code = row.iloc[1] if len(row) > 1 else None
+        raw_title = row.iloc[2] if len(row) > 2 else None
+        raw_artist = row.iloc[4] if len(row) > 4 else None
+        raw_album = row.iloc[8] if len(row) > 8 else (row.iloc[7] if len(row) > 7 else None)
+
+        if pd.notna(raw_code) and pd.notna(raw_title):
+            try:
+                code_str = str(int(float(raw_code)))
+            except Exception:
+                code_str = re.sub(r"[^0-9]", "", str(raw_code))
+
+            title_uni = win_to_unicode(str(raw_title))
+            artist_uni = win_to_unicode(str(raw_artist)) if pd.notna(raw_artist) else "အဆိုတော်အမည်မသိ"
+            album_uni = win_to_unicode(str(raw_album)) if pd.notna(raw_album) else "Album အမည်မသိ"
+
+            if code_str and title_uni:
+                songs_db.append({
+                    "id": code_str,
+                    "filename": f"a{code_str}.mpg",
+                    "title": title_uni,
+                    "artist": artist_uni,
+                    "album": album_uni
+                })
 
     for idx, row in df_r.iterrows():
-        if len(row) > 1 and pd.notna(row[1]):
-            _, name = parse_song_entry(row[1])
-            if name and name != "0":
-                artists_db.append(name)
+        val = row.iloc[2] if (len(row) > 2 and pd.notna(row.iloc[2]) and not isinstance(row.iloc[2], (int, float))) else (row.iloc[1] if len(row) > 1 else None)
+        if pd.notna(val):
+            name_uni = win_to_unicode(str(val))
+            if name_uni and not name_uni.isdigit():
+                artists_db.append(name_uni)
 
     for idx, row in df_s.iterrows():
-        if len(row) > 1 and pd.notna(row[1]):
-            _, name = parse_song_entry(row[1])
-            if name and name != "0":
-                albums_db.append(name)
+        val = row.iloc[2] if (len(row) > 2 and pd.notna(row.iloc[2]) and not isinstance(row.iloc[2], (int, float))) else (row.iloc[1] if len(row) > 1 else None)
+        if pd.notna(val):
+            name_uni = win_to_unicode(str(val))
+            if name_uni and not name_uni.isdigit():
+                albums_db.append(name_uni)
 
     print(f"Loaded {len(songs_db)} songs, {len(artists_db)} artists, {len(albums_db)} albums!")
 else:
@@ -212,7 +270,7 @@ def get_local_ip():
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))
-        ip = s.getsockname()[0]
+        ip = next(iter(s.getsockname()))
         s.close()
         return ip
     except Exception:
@@ -223,4 +281,4 @@ if __name__ == "__main__":
     print(f"Phone App IP Address: {get_local_ip()}")
     print("=" * 50)
     uvicorn.run(app, host="0.0.0.0", port=8000)
-
+    

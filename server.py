@@ -125,6 +125,7 @@ def scan_videos():
                         m_index[match.group(1)] = full_path
                     m_index[name_no_ext] = full_path
 
+    
     for folder in DISCO_FOLDERS:
         folder_path = os.path.join(BASE_DRIVE, folder)
         if not os.path.exists(folder_path):

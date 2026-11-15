@@ -137,7 +137,6 @@ def scan_videos():
 
 
 def load_databases():
-def load_databases():
     global songs_db
     temp_songs = []
 

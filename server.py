@@ -648,7 +648,7 @@ class NMHDesktopUI:
             ).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=2, pady=6)
 
         self.show_home_view()
-                def clear_right_panel(self):
+    def clear_right_panel(self):
         for w in self.right_panel.winfo_children():
             w.destroy()
 

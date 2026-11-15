@@ -599,7 +599,7 @@ class NMHDesktopUI:
                 sub_cards, text=label, font=("Pyidaungsu", 13, "bold"),
                 bg=bg_col, fg="white", command=cmd
             ).pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5)
-                def draw_tree_lines(self, event):
+    def draw_tree_lines(self, event):
         c = event.widget
         c.delete("all")
         w, h = event.width, event.height

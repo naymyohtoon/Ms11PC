@@ -140,6 +140,7 @@ def scan_videos():
                         d_index[match.group(1)] = full_path
                     d_index[name_no_ext] = full_path
 
+    
     myanmar_video_index = m_index
     disco_video_index = d_index
 

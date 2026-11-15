@@ -147,17 +147,17 @@ def load_databases():
             for row in ws.iter_rows(min_row=2, values_only=True):
                 if not row or len(row) < 2:
                     continue
-                code = normalize_code(row[0])
-                raw_title = row[1]
+                code = normalize_code(row)
+                raw_title = row
                 if not code or not raw_title:
                     continue
 
                 title = str(raw_title).strip()
-                artist = str(row[2]).strip() if len(row) > 2 and row[2] else "အမည်မသိ"
-                coartist = str(row[3]).strip() if len(row) > 3 and row[3] else ""
+                artist = str(row).strip() if len(row) > 2 and row else "အမည်မသိ"
+                coartist = str(row).strip() if len(row) > 3 and row else ""
                 if coartist:
                     artist = f"{artist} + {coartist}"
-                album = str(row[4]).strip() if len(row) > 4 and row[4] else ""
+                album = str(row).strip() if len(row) > 4 and row else ""
 
                 file_path = myanmar_video_index.get(code, "")
                 temp_songs.append({
@@ -171,8 +171,8 @@ def load_databases():
                     "path": file_path,
                 })
             wb.close()
-        except Exception as e:
-            print("Myanmar Excel Error:", e)
+        except Exception:
+            pass
 
     if os.path.exists(DISCO_EXCEL):
         try:
@@ -181,8 +181,8 @@ def load_databases():
             for row in ws.iter_rows(min_row=2, values_only=True):
                 if not row or len(row) < 2:
                     continue
-                code = normalize_code(row[0])
-                raw_title = row[1]
+                code = normalize_code(row)
+                raw_title = row
                 if not code or not raw_title:
                     continue
 
@@ -198,8 +198,8 @@ def load_databases():
                     "path": file_path,
                 })
             wb.close()
-        except Exception as e:
-            print("Disco Excel Error:", e)
+        except Exception:
+            pass
     else:
         sorted_keys = sorted([k for k in disco_video_index.keys() if k.isdigit()], key=lambda x: int(x))
         for code in sorted_keys:
@@ -769,11 +769,15 @@ class NMHDesktopUI:
         self.root.after(1000, self.refresh_loop)
 
 
-def run_api_server():
+def background_loader():
     open_firewall_port()
     scan_videos()
     load_databases()
-    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="warning")
+
+
+def run_api_server():
+    threading.Thread(target=background_loader, daemon=True).start()
+    uvicorn.run(app, host="0.0.0.0", port=8000, log_config=None)
 
 
 if __name__ == "__main__":

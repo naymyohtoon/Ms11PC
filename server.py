@@ -1,6 +1,7 @@
 from collections import deque
 import os
 import re
+import socket
 import threading
 import time
 from typing import Dict, List, Optional
@@ -21,25 +22,35 @@ app.add_middleware(
 )
 
 BASE_DRIVE = "J:\\"
-EXCEL_PATH = os.path.join(BASE_DRIVE, "q2.xlsx")
-TARGET_FOLDERS = [
-    "Myanmar_5",
-    "Shann_5",
-    "Rakhine_7",
-    "Kachin 5",
-    "Paoh_7",
-    "English_5",
-    "Chinese_5",
-    "India_7",
-    "DiscoVideo",
-    "MI5_New_Song",
-]
+MYANMAR_EXCEL = os.path.join(BASE_DRIVE, "q2.xlsx")
+DISCO_EXCEL = os.path.join(BASE_DRIVE, "disco.xlsx")
+
+MYANMAR_FOLDERS = ["Myanmar_5", "MI5_New_Song"]
+DISCO_FOLDERS = ["DiscoVideo"]
 VIDEO_EXTENSIONS = (".mp4", ".mkv", ".dat", ".vob", ".avi", ".mpg", ".mpeg")
 
 MYANMAR_DIGITS = {
     "0": "၀", "1": "၁", "2": "၂", "3": "၃", "4": "၄",
     "5": "၅", "6": "၆", "7": "၇", "8": "၈", "9": "၉",
 }
+
+
+def get_local_ip() -> str:
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("10.255.255.255", 1))
+        ip = s.getsockname()
+        s.close()
+        return ip
+    except Exception:
+        try:
+            hostname = socket.gethostname()
+            for ip in socket.gethostbyname_ex(hostname):
+                if not ip.startswith("127.") and not ip.startswith("169.254."):
+                    return ip
+        except Exception:
+            pass
+    return "127.0.0.1"
 
 
 def normalize_code(raw_code) -> str:
@@ -54,93 +65,123 @@ def normalize_code(raw_code) -> str:
 
 
 songs_db: List[Dict] = []
-video_index: Dict[str, str] = {}
+myanmar_video_index: Dict[str, str] = {}
+disco_video_index: Dict[str, str] = {}
 
 
 def scan_videos():
-    global video_index
-    temp_index = {}
-    print("Scanning video folders in J:\\ ...")
-    for folder in TARGET_FOLDERS:
+    global myanmar_video_index, disco_video_index
+    m_index = {}
+    d_index = {}
+
+    for folder in MYANMAR_FOLDERS:
         folder_path = os.path.join(BASE_DRIVE, folder)
         if not os.path.exists(folder_path):
             continue
         for root, _, files in os.walk(folder_path):
             for file in files:
                 if file.lower().endswith(VIDEO_EXTENSIONS):
-                    name_without_ext = os.path.splitext(file)[0].strip()
-                    code_match = re.match(r"^(\d+)", name_without_ext)
+                    name_no_ext = os.path.splitext(file).strip()
                     full_path = os.path.join(root, file)
-                    if code_match:
-                        code_key = code_match.group(1)
-                        temp_index[code_key] = full_path
-                    temp_index[name_without_ext] = full_path
-    video_index = temp_index
-    print(f"Total indexed video files: {len(video_index)}")
+                    match = re.search(r"(\d+)", name_no_ext)
+                    if match:
+                        m_index[match.group(1)] = full_path
+                    m_index[name_no_ext] = full_path
+
+    for folder in DISCO_FOLDERS:
+        folder_path = os.path.join(BASE_DRIVE, folder)
+        if not os.path.exists(folder_path):
+            continue
+        for root, _, files in os.walk(folder_path):
+            for file in files:
+                if file.lower().endswith(VIDEO_EXTENSIONS):
+                    name_no_ext = os.path.splitext(file).strip()
+                    full_path = os.path.join(root, file)
+                    match = re.search(r"(\d+)", name_no_ext)
+                    if match:
+                        d_index[match.group(1)] = full_path
+                    d_index[name_no_ext] = full_path
+
+    myanmar_video_index = m_index
+    disco_video_index = d_index
+    print(f"Found {len(myanmar_video_index)} Myanmar & {len(disco_video_index)} Disco videos!")
 
 
-def load_excel_db():
+def load_databases():
     global songs_db
-    if not os.path.exists(EXCEL_PATH):
-        print(f"Excel file not found: {EXCEL_PATH}")
-        return
-
-    print("Loading Unicode Excel database...")
-    wb = openpyxl.load_workbook(EXCEL_PATH, read_only=True, data_only=True)
-    ws = wb.active
     temp_songs = []
 
-    for row in ws.iter_rows(min_row=2, values_only=True):
-        if not row or len(row) < 2:
-            continue
-        raw_code = row[0] if len(row) > 0 else None
-        raw_title = row[1] if len(row) > 1 else None
-        raw_artist = row[2] if len(row) > 2 else None
-        raw_coartist = row[3] if len(row) > 3 else None
-        raw_album = row[4] if len(row) > 4 else None
+    if os.path.exists(MYANMAR_EXCEL):
+        wb = openpyxl.load_workbook(MYANMAR_EXCEL, read_only=True, data_only=True)
+        ws = wb.active
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            if not row or len(row) < 2:
+                continue
+            code = normalize_code(row)
+            raw_title = row
+            if not code or not raw_title:
+                continue
 
-        code = normalize_code(raw_code)
-        if not code or not raw_title:
-            continue
+            title = str(raw_title).strip()
+            artist = str(row).strip() if len(row) > 2 and row else "အမည်မသိ"
+            coartist = str(row).strip() if len(row) > 3 and row else ""
+            if coartist:
+                artist = f"{artist} + {coartist}"
+            album = str(row).strip() if len(row) > 4 and row else ""
 
-        title = str(raw_title).strip()
-        artist = str(raw_artist).strip() if raw_artist else "အမည်မသိ"
-        coartist = str(raw_coartist).strip() if raw_coartist else ""
-        if coartist:
-            artist = f"{artist} + {coartist}"
-        album = str(raw_album).strip() if raw_album else ""
+            file_path = myanmar_video_index.get(code, "")
+            temp_songs.append({
+                "id": code,
+                "code": code,
+                "title": title,
+                "artist": artist,
+                "album": album,
+                "category": "MYANMAR",
+                "has_file": bool(file_path),
+                "path": file_path,
+            })
+        wb.close()
 
-        file_path = video_index.get(code, "")
-        category = "MYANMAR"
-        if file_path:
-            upper_path = file_path.upper()
-            if "CHINESE" in upper_path:
-                category = "CHINA"
-            elif "ENGLISH" in upper_path:
-                category = "ENGLISH"
-            elif any(x in upper_path for x in ["SHANN", "RAKHINE", "KACHIN", "PAOH"]):
-                category = "ETHNIC"
-            elif "INDIA" in upper_path:
-                category = "INTERNATIONAL"
-            elif "DISCO" in upper_path:
-                category = "DISCO"
+    if os.path.exists(DISCO_EXCEL):
+        wb = openpyxl.load_workbook(DISCO_EXCEL, read_only=True, data_only=True)
+        ws = wb.active
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            if not row or len(row) < 2:
+                continue
+            code = normalize_code(row)
+            raw_title = row
+            if not code or not raw_title:
+                continue
 
-        temp_songs.append({
-            "id": code,
-            "code": code,
-            "title": title,
-            "artist": artist,
-            "album": album,
-            "category": category,
-            "has_file": bool(file_path),
-            "path": file_path,
-        })
+            file_path = disco_video_index.get(code, "")
+            temp_songs.append({
+                "id": f"D{code}",
+                "code": code,
+                "title": str(raw_title).strip(),
+                "artist": "",
+                "album": "",
+                "category": "DISCO",
+                "has_file": bool(file_path),
+                "path": file_path,
+            })
+        wb.close()
+    else:
+        sorted_keys = sorted([k for k in disco_video_index.keys() if k.isdigit()], key=lambda x: int(x))
+        for code in sorted_keys:
+            temp_songs.append({
+                "id": f"D{code}",
+                "code": code,
+                "title": f"Disco Nonstop {code}",
+                "artist": "",
+                "album": "",
+                "category": "DISCO",
+                "has_file": True,
+                "path": disco_video_index[code],
+            })
 
-    wb.close()
     songs_db = temp_songs
-    print(f"Loaded {len(songs_db)} songs from J:\\q2.xlsx.")
-
-vlc_instance = vlc.Instance("--no-video-title-show", "--fullscreen")
+    print(f"Loaded {len(songs_db)} total songs!")
+    vlc_instance = vlc.Instance("--no-video-title-show", "--fullscreen")
 player = vlc_instance.media_player_new()
 player.set_fullscreen(True)
 
@@ -152,9 +193,9 @@ vocal_off = False
 
 def play_media_file(song_item: Dict):
     global current_song, vocal_off
-    path = song_item.get("path") or video_index.get(song_item["id"])
+    path = song_item.get("path")
     if not path or not os.path.exists(path):
-        print(f"Video file not found for code: {song_item['id']}")
+        print(f"Video file not found for: {song_item['code']}")
         return False
 
     current_song = song_item
@@ -188,13 +229,18 @@ threading.Thread(target=queue_watcher, daemon=True).start()
 @app.on_event("startup")
 def startup_event():
     scan_videos()
-    load_excel_db()
+    load_databases()
+    local_ip = get_local_ip()
+    print("=" * 50)
+    print(f"App IP Address: {local_ip}")
+    print("=" * 50)
 
 
 @app.get("/status")
 def get_status():
     return {
         "connected": True,
+        "server_ip": get_local_ip(),
         "current_song": current_song,
         "queue_count": len(song_queue),
         "is_playing": player.is_playing() == 1,
@@ -207,18 +253,18 @@ def get_status():
 @app.get("/search")
 def search_songs(
     q: str = Query(""),
-    category: str = Query("ALL"),
-    limit: int = Query(100, ge=1, le=300),
+    category: str = Query("MYANMAR"),
+    limit: int = Query(150, ge=1, le=500),
 ):
     q_clean = q.strip().lower()
     results = []
 
     for s in songs_db:
-        if category != "ALL" and s["category"] != category:
+        if s["category"] != category:
             continue
         if q_clean:
             if (
-                q_clean not in s["id"].lower()
+                q_clean not in s["code"].lower()
                 and q_clean not in s["title"].lower()
                 and q_clean not in s["artist"].lower()
                 and q_clean not in s["album"].lower()
@@ -237,6 +283,8 @@ def browse_artists(q: str = Query("")):
     seen = set()
     artists = []
     for s in songs_db:
+        if s["category"] != "MYANMAR":
+            continue
         art = s["artist"]
         if not art or art == "အမည်မသိ" or art in seen:
             continue
@@ -255,6 +303,8 @@ def browse_albums(q: str = Query("")):
     seen = set()
     albums = []
     for s in songs_db:
+        if s["category"] != "MYANMAR":
+            continue
         alb = s["album"]
         if not alb or alb in seen:
             continue
@@ -271,6 +321,8 @@ def browse_albums(q: str = Query("")):
 def browse_filter(artist: str = Query(""), album: str = Query("")):
     results = []
     for s in songs_db:
+        if s["category"] != "MYANMAR":
+            continue
         if artist and s["artist"] == artist:
             results.append(s)
         elif album and s["album"] == album:
@@ -287,23 +339,35 @@ def get_queue():
 
 @app.post("/queue/add/{song_id}")
 def add_to_queue(song_id: str):
-    code = normalize_code(song_id)
-    found = next((s for s in songs_db if s["id"] == code), None)
-    if not found:
-        path = video_index.get(code)
-        if not path:
-            raise HTTPException(status_code=404, detail="Video file not found")
-        found = {
-            "id": code,
-            "code": code,
-            "title": f"Song {code}",
-            "artist": "",
-            "album": "",
-            "has_file": True,
-            "path": path,
-        }
-    elif not found.get("has_file"):
-        raise HTTPException(status_code=404, detail="Video file missing in drive")
+    if song_id.startswith("D"):
+        code = normalize_code(song_id[1:])
+        found = next((s for s in songs_db if s["category"] == "DISCO" and s["code"] == code), None)
+        if not found and code in disco_video_index:
+            found = {
+                "id": f"D{code}",
+                "code": code,
+                "title": f"Disco Nonstop {code}",
+                "artist": "",
+                "album": "",
+                "has_file": True,
+                "path": disco_video_index[code],
+            }
+    else:
+        code = normalize_code(song_id)
+        found = next((s for s in songs_db if s["category"] == "MYANMAR" and s["code"] == code), None)
+        if not found and code in myanmar_video_index:
+            found = {
+                "id": code,
+                "code": code,
+                "title": f"Myanmar Song {code}",
+                "artist": "",
+                "album": "",
+                "has_file": True,
+                "path": myanmar_video_index[code],
+            }
+
+    if not found or not found.get("has_file"):
+        raise HTTPException(status_code=404, detail="Video file not found")
 
     if not current_song and player.is_playing() == 0:
         play_media_file(found)
@@ -362,12 +426,12 @@ def control_player(action: str, value: int = Query(0)):
             current_song = None
     elif action == "vocal_toggle":
         tracks = player.audio_get_track_description()
-        valid_tracks = [t[0] for t in tracks if t[0] != -1] if tracks else []
+        valid_tracks = [t for t in tracks if t != -1] if tracks else []
         if len(valid_tracks) >= 2:
             curr_track = player.audio_get_track()
-            next_track = valid_tracks[1] if curr_track == valid_tracks[0] else valid_tracks[0]
+            next_track = valid_tracks if curr_track == valid_tracks else valid_tracks
             player.audio_set_track(next_track)
-            vocal_off = next_track == valid_tracks[1]
+            vocal_off = next_track == valid_tracks
         else:
             if not vocal_off:
                 player.audio_set_channel(4)
@@ -383,4 +447,4 @@ def control_player(action: str, value: int = Query(0)):
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
-
+        

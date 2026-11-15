@@ -600,16 +600,16 @@ class NMHDesktopUI:
                 bg=bg_col, fg="white", command=cmd
             ).pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5)
             def draw_tree_lines(self, event):
-        c = event.widget
-        c.delete("all")
-        w, h = event.width, event.height
-        root_x = w * 0.25
-        mid_y = h * 0.45
-        c.create_line(root_x, 0, root_x, mid_y, fill="#64FFDA", width=2)
-        targets = [w * 0.125, w * 0.375, w * 0.625, w * 0.875]
-        c.create_line(targets[0], mid_y, targets[3], mid_y, fill="#64FFDA", width=2)
-        for tx in targets:
-            c.create_line(tx, mid_y, tx, h, fill="#64FFDA", width=2)
+                c = event.widget
+                c.delete("all")
+                w, h = event.width, event.height
+                root_x = w * 0.25
+                mid_y = h * 0.45
+                c.create_line(root_x, 0, root_x, mid_y, fill="#64FFDA", width=2)
+                targets = [w * 0.125, w * 0.375, w * 0.625, w * 0.875]
+                c.create_line(targets[0], mid_y, targets[3], mid_y, fill="#64FFDA", width=2)
+                for tx in targets:
+                    c.create_line(tx, mid_y, tx, h, fill="#64FFDA", width=2)
 
     def show_numpad_view(self):
         self.screen_mode = "NUMPAD"

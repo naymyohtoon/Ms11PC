@@ -294,7 +294,8 @@ def load_databases():
             })
 
     songs_db = temp_songs
-        vlc_instance = vlc.Instance("--no-video-title-show", "--fullscreen")
+
+vlc_instance = vlc.Instance("--no-video-title-show", "--fullscreen")
 player = vlc_instance.media_player_new()
 player.set_fullscreen(True)
 

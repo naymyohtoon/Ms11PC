@@ -2,14 +2,26 @@ from collections import deque
 import os
 import re
 import socket
+import sys
 import threading
 import time
+import tkinter as tk
 from typing import Dict, List, Optional
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 import openpyxl
+from PIL import Image, ImageTk
 import uvicorn
 import vlc
+
+
+def resource_path(relative_path: str) -> str:
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
+
 
 app = FastAPI(title="MI7 Karaoke Server")
 
@@ -39,13 +51,13 @@ def get_local_ip() -> str:
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("10.255.255.255", 1))
-        ip = s.getsockname()
+        ip = s.getsockname()[0]
         s.close()
         return ip
     except Exception:
         try:
             hostname = socket.gethostname()
-            for ip in socket.gethostbyname_ex(hostname):
+            for ip in socket.gethostbyname_ex(hostname)[2]:
                 if not ip.startswith("127.") and not ip.startswith("169.254."):
                     return ip
         except Exception:
@@ -67,8 +79,6 @@ def normalize_code(raw_code) -> str:
 songs_db: List[Dict] = []
 myanmar_video_index: Dict[str, str] = {}
 disco_video_index: Dict[str, str] = {}
-
-
 def scan_videos():
     global myanmar_video_index, disco_video_index
     m_index = {}
@@ -81,7 +91,7 @@ def scan_videos():
         for root, _, files in os.walk(folder_path):
             for file in files:
                 if file.lower().endswith(VIDEO_EXTENSIONS):
-                    name_no_ext = os.path.splitext(file).strip()
+                    name_no_ext = os.path.splitext(file)[0].strip()
                     full_path = os.path.join(root, file)
                     match = re.search(r"(\d+)", name_no_ext)
                     if match:
@@ -95,7 +105,7 @@ def scan_videos():
         for root, _, files in os.walk(folder_path):
             for file in files:
                 if file.lower().endswith(VIDEO_EXTENSIONS):
-                    name_no_ext = os.path.splitext(file).strip()
+                    name_no_ext = os.path.splitext(file)[0].strip()
                     full_path = os.path.join(root, file)
                     match = re.search(r"(\d+)", name_no_ext)
                     if match:
@@ -104,7 +114,6 @@ def scan_videos():
 
     myanmar_video_index = m_index
     disco_video_index = d_index
-    print(f"Found {len(myanmar_video_index)} Myanmar & {len(disco_video_index)} Disco videos!")
 
 
 def load_databases():
@@ -117,17 +126,17 @@ def load_databases():
         for row in ws.iter_rows(min_row=2, values_only=True):
             if not row or len(row) < 2:
                 continue
-            code = normalize_code(row)
-            raw_title = row
+            code = normalize_code(row[0])
+            raw_title = row[1]
             if not code or not raw_title:
                 continue
 
             title = str(raw_title).strip()
-            artist = str(row).strip() if len(row) > 2 and row else "အမည်မသိ"
-            coartist = str(row).strip() if len(row) > 3 and row else ""
+            artist = str(row[2]).strip() if len(row) > 2 and row[2] else "အမည်မသိ"
+            coartist = str(row[3]).strip() if len(row) > 3 and row[3] else ""
             if coartist:
                 artist = f"{artist} + {coartist}"
-            album = str(row).strip() if len(row) > 4 and row else ""
+            album = str(row[4]).strip() if len(row) > 4 and row[4] else ""
 
             file_path = myanmar_video_index.get(code, "")
             temp_songs.append({
@@ -148,8 +157,8 @@ def load_databases():
         for row in ws.iter_rows(min_row=2, values_only=True):
             if not row or len(row) < 2:
                 continue
-            code = normalize_code(row)
-            raw_title = row
+            code = normalize_code(row[0])
+            raw_title = row[1]
             if not code or not raw_title:
                 continue
 
@@ -180,8 +189,9 @@ def load_databases():
             })
 
     songs_db = temp_songs
-    print(f"Loaded {len(songs_db)} total songs!")
-    vlc_instance = vlc.Instance("--no-video-title-show", "--fullscreen")
+
+
+vlc_instance = vlc.Instance("--no-video-title-show", "--fullscreen")
 player = vlc_instance.media_player_new()
 player.set_fullscreen(True)
 
@@ -195,7 +205,6 @@ def play_media_file(song_item: Dict):
     global current_song, vocal_off
     path = song_item.get("path")
     if not path or not os.path.exists(path):
-        print(f"Video file not found for: {song_item['code']}")
         return False
 
     current_song = song_item
@@ -224,18 +233,6 @@ def queue_watcher():
 
 
 threading.Thread(target=queue_watcher, daemon=True).start()
-
-
-@app.on_event("startup")
-def startup_event():
-    scan_videos()
-    load_databases()
-    local_ip = get_local_ip()
-    print("=" * 50)
-    print(f"App IP Address: {local_ip}")
-    print("=" * 50)
-
-
 @app.get("/status")
 def get_status():
     return {
@@ -258,7 +255,6 @@ def search_songs(
 ):
     q_clean = q.strip().lower()
     results = []
-
     for s in songs_db:
         if s["category"] != category:
             continue
@@ -273,7 +269,6 @@ def search_songs(
         results.append(s)
         if len(results) >= limit:
             break
-
     return results
 
 
@@ -443,8 +438,188 @@ def control_player(action: str, value: int = Query(0)):
         player.audio_set_volume(max(0, min(150, value)))
 
     return get_status()
+class MI7DesktopUI:
+    def __init__(self, root: tk.Tk):
+        self.root = root
+        self.root.title("Microstack V7.1.5 - MI7 Karaoke System")
+        self.root.attributes("-fullscreen", True)
+        self.root.configure(bg="#1E2226")
+        self.root.bind("<Escape>", lambda e: self.root.attributes("-fullscreen", False))
+
+        self.current_cat = "MYANMAR"
+        self.displayed_songs = []
+        self.build_ui()
+        self.refresh_loop()
+
+    def build_ui(self):
+        # Top Bar (Logo တစ်ဝက်ကျယ် + Now Playing + App IP Address)
+        top_frame = tk.Frame(self.root, bg="#121518", height=75)
+        top_frame.pack(fill=tk.X, padx=10, pady=8)
+        top_frame.pack_propagate(False)
+
+        try:
+            logo_path = resource_path("image_afebac29.jpg")
+            img = Image.open(logo_path).resize((420, 62), Image.Resampling.LANCZOS)
+            self.logo_photo = ImageTk.PhotoImage(img)
+            tk.Label(top_frame, image=self.logo_photo, bg="#121518").pack(side=tk.LEFT, padx=8)
+        except Exception:
+            tk.Label(
+                top_frame, text="MICROSTACK V7.1.5 (MI7)", font=("Pyidaungsu", 18, "bold"),
+                fg="#00E5FF", bg="#121518"
+            ).pack(side=tk.LEFT, padx=15)
+
+        self.lbl_playing = tk.Label(
+            top_frame, text="သီချင်း မဖွင့်ရသေးပါ (Ready)", font=("Pyidaungsu", 13, "bold"),
+            fg="#64FFDA", bg="#263238", anchor="w", padx=12
+        )
+        self.lbl_playing.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        ip_text = f"App IP Address: {get_local_ip()}"
+        self.lbl_ip = tk.Label(
+            top_frame, text=ip_text, font=("Consolas", 13, "bold"),
+            fg="#FFFFFF", bg="#00695C", padx=14, pady=8
+        )
+        self.lbl_ip.pack(side=tk.RIGHT, padx=10)
+
+        # Main Body
+        body_frame = tk.Frame(self.root, bg="#1E2226")
+        body_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=4)
+
+        # ဘယ်ဘက်ခြမ်း: ရွေးထားသောသီချင်းများ (Queue)
+        left_frame = tk.Frame(body_frame, bg="#262B30", width=380, bd=1, relief=tk.SOLID)
+        left_frame.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 10))
+        left_frame.pack_propagate(False)
+
+        tk.Label(
+            left_frame, text="ရွေးထားသောသီချင်းများ (Queue)", font=("Pyidaungsu", 13, "bold"),
+            fg="#FFD740", bg="#004D40", pady=8
+        ).pack(fill=tk.X)
+
+        self.queue_listbox = tk.Listbox(
+            left_frame, bg="#262B30", fg="#FFFFFF", font=("Pyidaungsu", 12),
+            selectbackground="#00796B", borderwidth=0, highlightthickness=0
+        )
+        self.queue_listbox.pack(fill=tk.BOTH, expand=True, padx=6, pady=6)
+
+        # ညာဘက်ခြမ်း: ရှာဖွေရေးနှင့် သီချင်းစာရင်း
+        right_frame = tk.Frame(body_frame, bg="#262B30", bd=1, relief=tk.SOLID)
+        right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
+
+        filter_bar = tk.Frame(right_frame, bg="#1B2024", pady=8)
+        filter_bar.pack(fill=tk.X)
+
+        tk.Button(
+            filter_bar, text="မြန်မာသီချင်းများ", font=("Pyidaungsu", 12, "bold"),
+            bg="#00897B", fg="white", padx=14, pady=4,
+            command=lambda: self.switch_cat("MYANMAR")
+        ).pack(side=tk.LEFT, padx=8)
+
+        tk.Button(
+            filter_bar, text="Disco Song", font=("Pyidaungsu", 12, "bold"),
+            bg="#5E35B1", fg="white", padx=14, pady=4,
+            command=lambda: self.switch_cat("DISCO")
+        ).pack(side=tk.LEFT, padx=4)
+
+        self.search_var = tk.StringVar()
+        self.search_var.trace_add("write", lambda *args: self.update_song_list())
+        search_entry = tk.Entry(
+            filter_bar, textvariable=self.search_var, font=("Pyidaungsu", 13),
+            bg="#37474F", fg="white", insertbackground="white", width=28
+        )
+        search_entry.pack(side=tk.RIGHT, padx=12)
+        tk.Label(filter_bar, text="ရှာရန်:", font=("Pyidaungsu", 12), fg="#B0BEC5", bg="#1B2024").pack(side=tk.RIGHT)
+
+        self.song_listbox = tk.Listbox(
+            right_frame, bg="#262B30", fg="#ECEFF1", font=("Pyidaungsu", 12),
+            selectbackground="#00695C", borderwidth=0, highlightthickness=0
+        )
+        self.song_listbox.pack(fill=tk.BOTH, expand=True, padx=8, pady=6)
+        self.song_listbox.bind("<Double-Button-1>", self.on_song_double_click)
+
+        # Bottom Control Bar
+        bottom_bar = tk.Frame(self.root, bg="#121518", height=52)
+        bottom_bar.pack(fill=tk.X, padx=10, pady=(4, 8))
+
+        controls = [
+            ("Play/Pause", lambda: control_player("play_pause")),
+            ("Stop", lambda: control_player("stop")),
+            ("Re-Start", lambda: control_player("restart")),
+            ("Next", lambda: control_player("next")),
+            ("Vocal/Music", lambda: control_player("vocal_toggle")),
+        ]
+        for text, cmd in controls:
+            tk.Button(
+                bottom_bar, text=text, font=("Pyidaungsu", 11, "bold"),
+                bg="#37474F", fg="white", padx=14, pady=6, command=cmd
+            ).pack(side=tk.LEFT, padx=8, pady=6)
+
+        tk.Label(
+            bottom_bar, text="Double-click နှိပ်၍ သီချင်းရွေးနိုင်ပါသည် | ESC နှိပ်၍ Fullscreen ပိတ်နိုင်သည်",
+            font=("Pyidaungsu", 10), fg="#90A4AE", bg="#121518"
+        ).pack(side=tk.RIGHT, padx=12)
+
+    def switch_cat(self, cat: str):
+        self.current_cat = cat
+        self.update_song_list()
+
+    def update_song_list(self):
+        q = self.search_var.get().strip().lower()
+        self.song_listbox.delete(0, tk.END)
+        self.displayed_songs = []
+        count = 0
+        for s in songs_db:
+            if s["category"] != self.current_cat:
+                continue
+            if q and (q not in s["code"].lower() and q not in s["title"].lower() and q not in s["artist"].lower()):
+                continue
+            self.displayed_songs.append(s)
+            artist_part = f" - {s['artist']}" if s["artist"] else ""
+            status_mark = "✔" if s["has_file"] else "✖"
+            self.song_listbox.insert(tk.END, f" [{s['code']}]  {s['title']}{artist_part}   ({status_mark})")
+            count += 1
+            if count >= 200:
+                break
+
+    def on_song_double_click(self, event):
+        sel = self.song_listbox.curselection()
+        if not sel:
+            return
+        song = self.displayed_songs[sel[0]]
+        try:
+            add_to_queue(song["id"])
+        except Exception:
+            pass
+
+    def refresh_loop(self):
+        if current_song:
+            art = f" - {current_song['artist']}" if current_song.get("artist") else ""
+            self.lbl_playing.config(text=f"Playing: [{current_song['code']}] {current_song['title']}{art}")
+        else:
+            self.lbl_playing.config(text="သီချင်း မဖွင့်ရသေးပါ (Ready)")
+
+        self.queue_listbox.delete(0, tk.END)
+        for idx, item in enumerate(list(song_queue)):
+            self.queue_listbox.insert(tk.END, f" {idx + 1}. [{item['code']}] {item['title']}")
+
+        if not hasattr(self, "_initial_loaded") and len(songs_db) > 0:
+            self._initial_loaded = True
+            self.update_song_list()
+
+        self.root.after(1000, self.refresh_loop)
+
+
+def run_api_server():
+    scan_videos()
+    load_databases()
+    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="warning")
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
-        
+    threading.Thread(target=run_api_server, daemon=True).start()
+    root = tk.Tk()
+    ui = MI7DesktopUI(root)
+    root.mainloop()
+
+
+
+

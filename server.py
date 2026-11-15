@@ -65,17 +65,21 @@ def get_local_ip() -> str:
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("10.255.255.255", 1))
-        ip = s.getsockname()
+        ip = s.getsockname()[0]
         s.close()
-        return ip
+        if ip and "." in ip and not ip.startswith("127."):
+            return ip
     except Exception:
-        try:
-            hostname = socket.gethostname()
-            for ip in socket.gethostbyname_ex(hostname):
-                if not ip.startswith("127.") and not ip.startswith("169.254."):
-                    return ip
-        except Exception:
-            pass
+        pass
+
+    try:
+        hostname = socket.gethostname()
+        _, _, ip_list = socket.gethostbyname_ex(hostname)
+        for ip in ip_list:
+            if "." in ip and not ip.startswith("127.") and not ip.startswith("169.254."):
+                return ip
+    except Exception:
+        pass
     return "127.0.0.1"
 
 
@@ -133,63 +137,70 @@ def scan_videos():
 
 
 def load_databases():
+def load_databases():
     global songs_db
     temp_songs = []
 
     if os.path.exists(MYANMAR_EXCEL):
-        wb = openpyxl.load_workbook(MYANMAR_EXCEL, read_only=True, data_only=True)
-        ws = wb.active
-        for row in ws.iter_rows(min_row=2, values_only=True):
-            if not row or len(row) < 2:
-                continue
-            code = normalize_code(row)
-            raw_title = row
-            if not code or not raw_title:
-                continue
+        try:
+            wb = openpyxl.load_workbook(MYANMAR_EXCEL, read_only=True, data_only=True)
+            ws = wb.active
+            for row in ws.iter_rows(min_row=2, values_only=True):
+                if not row or len(row) < 2:
+                    continue
+                code = normalize_code(row[0])
+                raw_title = row[1]
+                if not code or not raw_title:
+                    continue
 
-            title = str(raw_title).strip()
-            artist = str(row).strip() if len(row) > 2 and row else "အမည်မသိ"
-            coartist = str(row).strip() if len(row) > 3 and row else ""
-            if coartist:
-                artist = f"{artist} + {coartist}"
-            album = str(row).strip() if len(row) > 4 and row else ""
+                title = str(raw_title).strip()
+                artist = str(row[2]).strip() if len(row) > 2 and row[2] else "အမည်မသိ"
+                coartist = str(row[3]).strip() if len(row) > 3 and row[3] else ""
+                if coartist:
+                    artist = f"{artist} + {coartist}"
+                album = str(row[4]).strip() if len(row) > 4 and row[4] else ""
 
-            file_path = myanmar_video_index.get(code, "")
-            temp_songs.append({
-                "id": code,
-                "code": code,
-                "title": title,
-                "artist": artist,
-                "album": album,
-                "category": "MYANMAR",
-                "has_file": bool(file_path),
-                "path": file_path,
-            })
-        wb.close()
+                file_path = myanmar_video_index.get(code, "")
+                temp_songs.append({
+                    "id": code,
+                    "code": code,
+                    "title": title,
+                    "artist": artist,
+                    "album": album,
+                    "category": "MYANMAR",
+                    "has_file": bool(file_path),
+                    "path": file_path,
+                })
+            wb.close()
+        except Exception as e:
+            print("Myanmar Excel Error:", e)
 
     if os.path.exists(DISCO_EXCEL):
-        wb = openpyxl.load_workbook(DISCO_EXCEL, read_only=True, data_only=True)
-        ws = wb.active
-        for row in ws.iter_rows(min_row=2, values_only=True):
-            if not row or len(row) < 2:
-                continue
-            code = normalize_code(row)
-            raw_title = row
-            if not code or not raw_title:
-                continue
+        try:
+            wb = openpyxl.load_workbook(DISCO_EXCEL, read_only=True, data_only=True)
+            ws = wb.active
+            for row in ws.iter_rows(min_row=2, values_only=True):
+                if not row or len(row) < 2:
+                    continue
+                code = normalize_code(row[0])
+                raw_title = row[1]
+                if not code or not raw_title:
+                    continue
 
-            file_path = disco_video_index.get(code, "")
-            temp_songs.append({
-                "id": f"D{code}",
-                "code": code,
-                "title": str(raw_title).strip(),
-                "artist": "",
-                "album": "",
-                "category": "DISCO",
-                "has_file": bool(file_path),
-                "path": file_path,
-            })
-        wb.close()
+                file_path = disco_video_index.get(code, "")
+                temp_songs.append({
+                    "id": f"D{code}",
+                    "code": code,
+                    "title": str(raw_title).strip(),
+                    "artist": "",
+                    "album": "",
+                    "category": "DISCO",
+                    "has_file": bool(file_path),
+                    "path": file_path,
+                })
+            wb.close()
+        except Exception as e:
+            print("Disco Excel Error:", e)
     else:
         sorted_keys = sorted([k for k in disco_video_index.keys() if k.isdigit()], key=lambda x: int(x))
         for code in sorted_keys:

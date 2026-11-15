@@ -142,7 +142,8 @@ def scan_videos():
 
     myanmar_video_index = m_index
     disco_video_index = d_index
-    def read_excel_rows_all_methods(file_path: str) -> List[List]:
+
+def read_excel_rows_all_methods(file_path: str) -> List[List]:
     rows_out = []
     if not os.path.exists(file_path):
         return rows_out

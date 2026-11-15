@@ -688,7 +688,7 @@ class NMHDesktopUI:
         self.listbox.bind("<Double-Button-1>", self.on_list_double_click)
         self.populate_list()
 
-        def populate_list(self):
+    def populate_list(self):
         q = self.search_var.get().strip().lower()
         self.listbox.delete(0, tk.END)
         self.displayed_items = []

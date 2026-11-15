@@ -1,290 +1,486 @@
-import os, sys, re, socket, configparser
-import pandas as pd
-from fastapi import FastAPI, HTTPException
+from collections import deque
+import os
+import re
+import threading
+import time
+from typing import Dict, List, Optional
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-import vlc, uvicorn
+import openpyxl
+from pydantic import BaseModel
+import uvicorn
+import vlc
 
-app = FastAPI()
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+app = FastAPI(title="MI7 Karaoke Server")
 
-MM_TO_EN = str.maketrans("၀၁၂၃၄၅၆၇၈၉", "0123456789")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-W54_MAP = {
-    'u': 'က', 'c': 'ခ', '*': 'ဂ', 'C': 'ဃ', 'i': 'င',
-    'p': 'စ', 'q': 'ဆ', 'Z': 'ဇ', 'ps': 'ဈ', 'n': 'ည', 'N': 'ည', 'Ò': 'ဉ', 'ò': 'ဉ',
-    '#': 'ဋ', 'X': 'ဌ', '!': 'ဍ', '¡': 'ဎ', 'P': 'ဏ', 'ó': 'ဏ',
-    'w': 'တ', 'x': 'ထ', '’': 'ဒ', '“': 'ဓ', 'e': 'န', 'E': 'န', 'ø': 'န', '3': 'ဒ',
-    'y': 'ပ', 'ù': 'ပ', 'z': 'ဖ', 'A': 'ဗ', 'b': 'ဘ', 'r': 'မ', 'ý': 'မ',
-    ',': 'ယ', '&': 'ရ', 'v': 'လ', '0': 'ဝ', 'o': 'သ', 'ð': 'သ',
-    '[': 'ဟ', 'V': 'ဠ', 't': 'အ', 'O': 'ဩ', 'o&': 'သြ', 'aMomf': 'ဪ',
-    '£': 'ဣ', '%': 'ဣ', '¤': 'ဤ', '{': 'ဧ', '}': 'ၒ', 'OD;': 'ဦး', 'OD': 'ဦ',
-    'ü': 'ဘ', 'ö': 'ဒ', 'ú': 'ဖ', 'û': 'ဗ', 'þ': 'ယ', 'ÿ': 'ရ',
-    '"': 'ဒ', "'": 'ဒ', '|': 'ု', '<': '၎င်း', '>': '။', '?': '၊', 'í': '၌', 'ì': '၍',
-    'm': 'ာ', 'g': 'ါ', 'd': 'ိ', 'D': 'ီ', 'k': 'ု', 'K': 'ူ', 'l': 'ူ', 'L': 'ြူ',
-    'J': 'ဲ', 'H': 'ံ', 'h': '့', 'Y': '့', 'U': '့', 'f': '်', ';': 'း', ':': 'ာ်',
-    '/': 'ျ', 's': 'ျ', 'j': 'ြ', 'B': 'ြ', 'M': 'ြ', '~': 'ြ', '\\': 'ြ',
-    'S': 'ှ', 'T': 'ှ', '^': 'ှ', '`': 'ှ', '4': 'ှ', '7': 'ှ',
-    'W': 'ွ', 'G': 'ွ', 'Q': 'ြွ', 'R': 'ျွ', '_': 'ွ', '2': 'ွ', '6': 'ွ',
-    'uúm': 'က္ကာ', 'uú': 'က္က', 'c©': 'က္ခ', 'u©': 'က္ခ', '*¾': 'ဂ္ဂ', 'C¾': 'ဂ္ဃ',
-    'pö': 'စ္စ', 'qä': 'စ္ဆ', 'ZÆ': 'ဇ္ဇ', 'ZÑ': 'ဇ္ဈ', 'n©': 'ဉ္စ', 'nÖ': 'ဉ္ဆ',
-    '#Ö': 'ဋ္ဋ', '$': 'ဋ္ဌ', '@': 'ဍ္ဍ', '¡Ö': 'ဍ္ဎ', 'PÖ': 'ဏ္ဍ', 'PØ': 'ဏ္ဌ',
-    'wå': 'တ္တ', 'Wå': 'တ္တ', 'å': '္တ', 'w¦': 'တ္ထ', 'x¦': 'တ္ထ',
-    '’´': 'ဒ္ဒ', '“´': 'ဒ္ဓ', 'eÅ': 'န္တ', 'e¨': 'န္ထ', 'e´': 'န္ဒ',
-    'yÜ': 'ပ္ပ', 'zÜ': 'ပ္ဖ', 'AÁ': 'ဗ္ဗ', 'bÁ': 'ဗ္ဘ',
-    'rÜ': 'မ္ပ', 'rÁ': 'မ္ဗ', 'rÇ': 'မ္ဘ', 'r®': 'မ္မ',
-    'vØ': 'လ္လ', 'ß': 'ဿ',
-    '½': 'ွှ', '¾': 'ွှ', '¿': 'ြွ', 'À': 'ြွ', 'Á': 'ျွ', 'Â': 'ျွ',
-    'Ã': 'ျှ', 'Ä': 'ျှ', 'Å': 'ြှ', 'Æ': 'ြှ', 'Ç': 'ှု', 'È': 'ှူ', 'É': 'ွှ',
-    '=': 'ည', '+': 'ဏ', '-': 'ဗ'
+BASE_DRIVE = "J:\\"
+EXCEL_PATH = os.path.join(BASE_DRIVE, "q2.xlsx")
+TARGET_FOLDERS = [
+    "Myanmar_5",
+    "Shann_5",
+    "Rakhine_7",
+    "Kachin 5",
+    "Paoh_7",
+    "English_5",
+    "Chinese_5",
+    "India_7",
+    "DiscoVideo",
+]
+VIDEO_EXTENSIONS = (".mp4", ".mkv", ".dat", ".vob", ".avi", ".mpg", ".mpeg")
+
+MYANMAR_DIGITS = {
+    "0": "၀",
+    "1": "၁",
+    "2": "၂",
+    "3": "၃",
+    "4": "၄",
+    "5": "၅",
+    "6": "၆",
+    "7": "၇",
+    "8": "၈",
+    "9": "၉",
 }
 
-def win_to_unicode(text):
-    if not isinstance(text, str): return ""
-    s = text.strip()
-    if not s or s == "0": return ""
-    if any('\u1000' <= ch <= '\u109F' for ch in s):
-        return s
 
-    pre = [
-        ('o&', 'သြ'), ('OD;', 'ဦး'), ('OD', 'ဦ'), ('£', 'ဣ'), ('¤', 'ဤ'), ('aMomf', 'ဪ'),
-        ('arwåm', 'မေတ္တာ'), ('wå', 'တ္တ'), ('Wå', 'တ္တ'), ('EÅ', 'န္တ'), ('eÅ', 'န္တ'),
-        ('NyD', 'ပြီ'), ('MuD;', 'ကြီး'), ('MuD', 'ကြီ'), ('rHk;', 'မုန်း'), ('rHk', 'မုန်'),
-        ('jzL;', 'ဖြူး'), ('jzL', 'ဖြူ'), ('jzpf', 'ဖြစ်'), ('jzwf', 'ဖြတ်'), ('jzK', 'ဖြူ'),
-        ('a&T', 'ရွှေ'), ('a&S', 'ရွှေ'), ('a&$', 'ရွှေ'), ('aY', 'ရွှေ'),
-        ('ES', 'နှ'), ('ET', 'နှ'), ('eS', 'နှ'), ('eT', 'နှ'),
-        ('rS', 'မှ'), ('rT', 'မှ'), ('vS', 'လှ'), ('vT', 'လှ'),
-        ('0S', 'ဝှ'), ('0T', 'ဝှ'), ('oS', 'သှ'), ('oT', 'သှ'),
-        (',S', 'ယှ'), (',T', 'ယှ'), ('&S', 'ရှ'), ('&T', 'ရှ')
-    ]
-    for old, new in pre:
-        s = s.replace(old, new)
+def w54_to_unicode(text: str) -> str:
+  if text is None:
+    return ""
+  text = str(text).strip()
+  if not text:
+    return ""
 
-    s = s.replace("'", "ဒ").replace('"', "ဒ").replace("3", "ဒ")
+  multi_map = {
+      "Q": "\u103B\u103E",
+      "T": "\u103D\u103E",
+      "F": "\u1004\u103A\u1039",
+      "L": "\u103E\u102F",
+      "I": "\u103E\u1030",
+      "E": "\u1014\u1039\u1010",
+      "Å": "\u1039\u1010",
+      "W": "\u103C\u103D",
+      "<": "\u103C",
+      ">": "\u103C",
+      "©": "\u1000\u1039\u1000",
+      "®": "\u100F\u1039\u100D",
+      "Æ": "\u1012\u1039\u1013",
+      "Ç": "\u1015\u1039\u1015",
+      "É": "\u1019\u1039\u1019",
+      "Ê": "\u101C\u1039\u101C",
+      "Ë": "\u101E\u1039\u101E",
+  }
 
-    cons = r'[uc*CipqZnN#X!¡Pwx’“eEyzAbr,&v0o\[Vtဒနှမှလှဝှသှယှရှ]'
-    s = re.sub(rf'({cons})F', r'င်္\1', s)
-    s = re.sub(rf'a([jBMQL]?{cons}[STWG]?)', r'\1ေ', s)
-    s = re.sub(rf'([jBM])({cons})', r'\2ြ', s)
-    s = re.sub(rf'Q({cons})', r'\1ြွ', s)
-    s = re.sub(rf'L({cons})', r'\1ြူ', s)
+  text = re.sub(
+      r"a([u-zA-Z0-9\'\"\#\!\[\]\*\,\&\\QTEW<>]{1,4})f", r"\u1031\1\u102B", text
+  )
 
-    out, i = [], 0
-    while i < len(s):
-        if i + 3 <= len(s) and s[i:i+3] in W54_MAP:
-            out.append(W54_MAP[s[i:i+3]]); i += 3
-        elif i + 2 <= len(s) and s[i:i+2] in W54_MAP:
-            out.append(W54_MAP[s[i:i+2]]); i += 2
-        elif s[i] in W54_MAP:
-            out.append(W54_MAP[s[i]]); i += 1
-        else:
-            out.append(s[i]); i += 1
-    res = "".join(out)
+  for k, v in multi_map.items():
+    text = text.replace(k, v)
 
-    fixes = [
-        ('ေြ', 'ြေ'), ('ေျ', 'ျေ'), ('ေွ', 'ွေ'), ('ေှ', 'ှေ'),
-        ('ော', 'ော'), ('ေါ', 'ေါ'), ('ေါ်', 'ေါ်'), ('ေော်', 'ော်'),
-        ('ုိ', 'ို'), ('ူိ', 'ို'), ('ံု', 'ုံ'), ('ံူ', 'ုံ'),
-        ('့်', '့်'), ('့း', 'း'), ('့့', '့'),
-        ('ြပူ', 'ဖြူ'), ('ြပူး', 'ဖြူး'), ('မန္ဒလေး', 'မန္တလေး'), ('အပျိုတော်ဂမံုး', 'အပျိုတော်ဂမုန်း')
-    ]
-    for old, new in fixes:
-        res = res.replace(old, new)
-    return res
+  char_map = {
+      "u": "က",
+      "c": "ခ",
+      "*": "ဂ",
+      "C": "ဃ",
+      "i": "င",
+      "p": "စ",
+      "q": "ဆ",
+      "Z": "ဇ",
+      "#": "ဋ",
+      "X": "ဌ",
+      "!": "ဍ",
+      "\\": "ဎ",
+      "P": "ဏ",
+      "w": "တ",
+      "x": "ထ",
+      "'": "ဒ",
+      '"': "ဓ",
+      "e": "န",
+      "y": "ပ",
+      "z": "ဖ",
+      "A": "ဗ",
+      "b": "ဘ",
+      "r": "မ",
+      ",": "ယ",
+      "&": "ရ",
+      "v": "လ",
+      "0": "ဝ",
+      "o": "သ",
+      "[": "ဟ",
+      "V": "ဠ",
+      "t": "အ",
+      "n": "ည",
+      "N": "ဉ",
+      "a": "\u1031",
+      "m": "\u102C",
+      "g": "\u102B",
+      "d": "\u102D",
+      "D": "\u102E",
+      "k": "\u102F",
+      "K": "\u1030",
+      "J": "\u1032",
+      "H": "\u1036",
+      "h": "\u1037",
+      ";": "\u1038",
+      "f": "\u103A",
+      "s": "\u103B",
+      "j": "\u103C",
+      "M": "\u103C",
+      "B": "\u103C",
+      "G": "\u103D",
+      "S": "\u103E",
+      "1": "၁",
+      "2": "၂",
+      "3": "၃",
+      "4": "၄",
+      "5": "၅",
+      "6": "၆",
+      "7": "၇",
+      "8": "၈",
+      "9": "၉",
+  }
 
-base_dir = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.path.dirname(os.path.abspath(__file__))
-config = configparser.ConfigParser()
-config_path = os.path.join(base_dir, "config.txt")
-if not os.path.exists(config_path): config_path = "config.txt"
-config.read(config_path, encoding="utf-8")
-EXCEL_PATH = config.get("PATHS", "EXCEL_PATH", fallback="J:/q2.xlsx").strip('"').strip("'")
-VIDEO_ROOT = config.get("PATHS", "VIDEO_ROOT", fallback="J:/").strip('"').strip("'")
+  res = "".join(char_map.get(ch, ch) for ch in text)
 
-print(f"Scanning video files in {VIDEO_ROOT}...")
-video_file_map = {}
-video_cat_map = {}
+  res = re.sub(
+      r"(\u1031)?(\u1004\u103A\u1039)([\u1000-\u1021])", r"\2\3\1", res
+  )
+  res = re.sub(r"(\u103C)([\u1000-\u1021])", r"\2\1", res)
+  res = re.sub(
+      r"(\u1031)([\u1000-\u1021][\u103B-\u103E]*)", r"\2\1", res
+  )
+  res = res.replace("\u103E\u103D", "\u103D\u103E")
+  res = re.sub(r"([\u102F\u1030])([\u103B-\u103E])", r"\2\1", res)
+  res = res.replace("\u1036\u102D", "\u102D\u1036")
+  res = res.replace("\u1037\u103A", "\u103A\u1037")
+  res = res.replace("ဂမုှိင်္ရ", "ဂမုန်းရ")
 
-def detect_category(folder_path):
-    p = folder_path.lower()
-    if "shann" in p or "shan" in p: return "SHAN"
-    if "rakhine" in p: return "RAKHINE"
-    if "kachin" in p: return "KACHIN"
-    if "paoh" in p: return "PAOH"
-    if "english" in p: return "ENGLISH"
-    if "chinese" in p or "china" in p: return "CHINA"
-    if "india" in p: return "INTERNATIONAL"
-    if "disco" in p: return "DISCO"
-    return "MYANMAR"
+  return res
 
-if os.path.exists(VIDEO_ROOT):
-    for root, dirs, files in os.walk(VIDEO_ROOT):
-        if "bkgvideo" in root.lower() or "discomp3" in root.lower():
-            continue
-        cat = detect_category(root)
-        for f in files:
-            if f.lower().endswith(('.mp4', '.mpg', '.mpeg', '.dat', '.mkv', '.avi', '.vob')):
-                m = re.match(r"^[aA]?0*(\d+)\.", f)
-                if m:
-                    cid = m.group(1)
-                    video_file_map[cid] = os.path.join(root, f)
-                    video_cat_map[cid] = cat
-print(f"Found {len(video_file_map)} video files on disk!")
 
-songs_db, artists_set, albums_set = [], set(), set()
-seen_ids = set()
+def normalize_code(raw_code) -> str:
+  if raw_code is None:
+    return ""
+  s = str(raw_code).strip()
+  rev_digits = {v: k for k, v in MYANMAR_DIGITS.items()}
+  eng_s = "".join(rev_digits.get(ch, ch) for ch in s)
+  if eng_s.endswith(".0"):
+    eng_s = eng_s[:-2]
+  return eng_s
 
-if os.path.exists(EXCEL_PATH):
-    xls = pd.ExcelFile(EXCEL_PATH)
-    for sheet in xls.sheet_names:
-        if sheet.lower() in ("r", "s"):
-            continue
-        df_q = pd.read_excel(xls, sheet_name=sheet, header=None)
-        for row in df_q.itertuples(index=False):
-            raw_code = getattr(row, '_1', None)
-            raw_title = getattr(row, '_2', None)
-            raw_artist = getattr(row, '_4', None)
-            raw_album = getattr(row, '_8', getattr(row, '_7', None))
-            if pd.notna(raw_code) and pd.notna(raw_title):
-                try: code_str = str(int(float(raw_code)))
-                except Exception: code_str = re.sub(r"[^0-9]", "", str(raw_code).translate(MM_TO_EN))
-                if not code_str or code_str in seen_ids or code_str == "012345678910":
-                    continue
-                title_uni = win_to_unicode(str(raw_title))
-                artist_uni = win_to_unicode(str(raw_artist)) if pd.notna(raw_artist) else "အဆိုတော်အမည်မသိ"
-                album_uni = win_to_unicode(str(raw_album)) if pd.notna(raw_album) else "တေးစီးရီးအမည်မသိ"
-                if title_uni:
-                    seen_ids.add(code_str)
-                    cat_name = video_cat_map.get(code_str, "MYANMAR")
-                    songs_db.append({
-                        "id": code_str,
-                        "title": title_uni,
-                        "artist": artist_uni,
-                        "album": album_uni,
-                        "category": cat_name,
-                        "has_file": code_str in video_file_map
-                    })
-                    if cat_name == "MYANMAR":
-                        if artist_uni != "အဆိုတော်အမည်မသိ": artists_set.add(artist_uni)
-                        if album_uni != "တေးစီးရီးအမည်မသိ": albums_set.add(album_uni)
 
-for cid, fpath in video_file_map.items():
-    if cid not in seen_ids:
-        seen_ids.add(cid)
-        cat_name = video_cat_map.get(cid, "MYANMAR")
-        fname = os.path.basename(fpath)
-        songs_db.append({
-            "id": cid,
-            "title": f"{cat_name} ({fname})",
-            "artist": cat_name,
-            "album": os.path.basename(os.path.dirname(fpath)),
-            "category": cat_name,
-            "has_file": True
-        })
+songs_db: List[Dict] = []
+video_index: Dict[str, str] = {}
 
-artists_db, albums_db = sorted(list(artists_set)), sorted(list(albums_set))
-print(f"Loaded {len(songs_db)} total songs, {len(artists_db)} artists, {len(albums_db)} albums!")
 
-vlc_instance = vlc.Instance()
+def scan_videos():
+  global video_index
+  temp_index = {}
+  print("Scanning video folders...")
+  for folder in TARGET_FOLDERS:
+    folder_path = os.path.join(BASE_DRIVE, folder)
+    if not os.path.exists(folder_path):
+      continue
+    for root, _, files in os.walk(folder_path):
+      for file in files:
+        if file.lower().endswith(VIDEO_EXTENSIONS):
+          name_without_ext = os.path.splitext(file)[0].strip()
+          code_match = re.match(r"^(\d+)", name_without_ext)
+          full_path = os.path.join(root, file)
+          if code_match:
+            code_key = code_match.group(1)
+            temp_index[code_key] = full_path
+          temp_index[name_without_ext] = full_path
+  video_index = temp_index
+  print(f"Total indexed video files: {len(video_index)}")
+
+def load_excel_db():
+  global songs_db
+  if not os.path.exists(EXCEL_PATH):
+    print(f"Excel file not found: {EXCEL_PATH}")
+    return
+
+  print("Loading Excel database...")
+  wb = openpyxl.load_workbook(EXCEL_PATH, read_only=True, data_only=True)
+  ws = wb.active
+  temp_songs = []
+
+  for row in ws.iter_rows(min_row=2, values_only=True):
+    if not row or len(row) < 3:
+      continue
+    raw_code = row[1] if len(row) > 1 else None
+    raw_title = row[2] if len(row) > 2 else None
+    raw_artist = row[4] if len(row) > 4 else None
+    raw_album = row[8] if len(row) > 8 else None
+
+    code = normalize_code(raw_code)
+    if not code or not raw_title:
+      continue
+
+    title = w54_to_unicode(raw_title)
+    artist = w54_to_unicode(raw_artist) if raw_artist else "အမည်မသိ"
+    album = w54_to_unicode(raw_album) if raw_album else ""
+
+    file_path = video_index.get(code, "")
+    category = "MYANMAR"
+    if file_path:
+      upper_path = file_path.upper()
+      if "CHINESE" in upper_path:
+        category = "CHINA"
+      elif "ENGLISH" in upper_path:
+        category = "ENGLISH"
+      elif any(
+          x in upper_path for x in ["SHANN", "RAKHINE", "KACHIN", "PAOH"]
+      ):
+        category = "ETHNIC"
+      elif "INDIA" in upper_path:
+        category = "INTERNATIONAL"
+      elif "DISCO" in upper_path:
+        category = "DISCO"
+
+    temp_songs.append({
+        "code": code,
+        "title": title,
+        "artist": artist,
+        "album": album,
+        "category": category,
+        "has_file": bool(file_path),
+        "path": file_path,
+    })
+
+  wb.close()
+  songs_db = temp_songs
+  print(f"Loaded {len(songs_db)} songs from Excel.")
+
+
+vlc_instance = vlc.Instance("--no-video-title-show", "--fullscreen")
 player = vlc_instance.media_player_new()
 player.set_fullscreen(True)
-queue_list, current_song, vocal_off, repeat_mode = [], None, False, False
 
-def play_next_in_queue():
-    global current_song
-    if queue_list:
-        current_song = queue_list.pop(0)
-        fp = video_file_map.get(current_song["id"])
-        if fp and os.path.exists(fp):
-            player.set_media(vlc_instance.media_new(fp))
-            player.play()
-        else: play_next_in_queue()
-    else:
+song_queue = deque()
+current_song: Optional[Dict] = None
+is_repeat = False
+vocal_mode = 0
+
+
+def play_media_file(song_item: Dict):
+  global current_song, vocal_mode
+  path = song_item.get("path") or video_index.get(song_item["code"])
+  if not path or not os.path.exists(path):
+    print(f"Video file not found for code: {song_item['code']}")
+    return False
+
+  current_song = song_item
+  media = vlc_instance.media_new(path)
+  player.set_media(media)
+  player.play()
+  time.sleep(0.3)
+  player.set_fullscreen(True)
+  vocal_mode = 0
+  return True
+
+
+def queue_watcher():
+  global current_song
+  while True:
+    time.sleep(1.0)
+    state = player.get_state()
+    if state == vlc.State.Ended:
+      if is_repeat and current_song:
+        play_media_file(current_song)
+      elif len(song_queue) > 0:
+        next_song = song_queue.popleft()
+        play_media_file(next_song)
+      else:
         current_song = None
-        player.stop()
+
+
+threading.Thread(target=queue_watcher, daemon=True).start()
+
+
+class SongRequest(BaseModel):
+  code: str
+
+
+@app.on_event("startup")
+def startup_event():
+  scan_videos()
+  load_excel_db()
+
 
 @app.get("/status")
 def get_status():
-    if "Ended" in str(player.get_state()):
-        if repeat_mode and current_song:
-            fp = video_file_map.get(current_song["id"])
-            if fp: player.set_media(vlc_instance.media_new(fp)); player.play()
-        elif queue_list: play_next_in_queue()
-    return {"is_playing": player.is_playing() == 1, "current_song": current_song, "time_ms": player.get_time(), "length_ms": player.get_length(), "volume": player.audio_get_volume(), "vocal_off": vocal_off, "repeat": repeat_mode, "queue_count": len(queue_list)}
+  return {
+      "connected": True,
+      "current_song": current_song,
+      "queue": list(song_queue),
+      "queue_count": len(song_queue),
+      "is_playing": player.is_playing() == 1,
+      "is_repeat": is_repeat,
+      "vocal_mode": vocal_mode,
+      "volume": player.audio_get_volume(),
+  }
 
-@app.get("/search")
-def search_songs(q: str = "", category: str = ""):
-    pool = songs_db
-    if category:
-        c_up = category.upper()
-        if c_up == "ETHNIC":
-            pool = [s for s in songs_db if s["category"] in ("SHAN", "RAKHINE", "KACHIN", "PAOH")]
-        else:
-            pool = [s for s in songs_db if s["category"] == c_up]
-    if not q:
-        return pool[:5000]
-    q_clean = q.strip().translate(MM_TO_EN).lower()
-    return [s for s in pool if q_clean in s["title"].lower() or q_clean in s["artist"].lower() or q_clean in s["id"]][:2000]
 
-@app.get("/browse/artists")
-def get_artists(q: str = ""):
-    if not q: return artists_db
-    return [a for a in artists_db if q.lower() in a.lower()]
+@app.get("/songs")
+def get_songs(
+    q: str = Query(""),
+    category: str = Query("ALL"),
+    limit: int = Query(60, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+):
+  q_clean = q.strip().lower()
+  filtered = []
 
-@app.get("/browse/albums")
-def get_albums(q: str = ""):
-    if not q: return albums_db
-    return [a for a in albums_db if q.lower() in a.lower()]
+  for s in songs_db:
+    if category != "ALL" and s["category"] != category:
+      continue
+    if q_clean:
+      if (
+          q_clean not in s["code"].lower()
+          and q_clean not in s["title"].lower()
+          and q_clean not in s["artist"].lower()
+          and q_clean not in s["album"].lower()
+      ):
+        continue
+    filtered.append({
+        "code": s["code"],
+        "title": s["title"],
+        "artist": s["artist"],
+        "album": s["album"],
+        "category": s["category"],
+    })
 
-@app.get("/browse/filter")
-def filter_songs(artist: str = None, album: str = None):
-    if artist: return [s for s in songs_db if s["artist"] == artist]
-    if album: return [s for s in songs_db if s["album"] == album]
-    return songs_db[:5000]
+  return {
+      "total": len(filtered),
+      "items": filtered[offset : offset + limit],
+  }
 
-@app.get("/queue")
-def get_queue(): return queue_list
 
-@app.post("/queue/add/{song_id}")
-def add_to_queue(song_id: str):
-    clean_id = song_id.strip().translate(MM_TO_EN)
-    song = next((s for s in songs_db if s["id"] == clean_id), None)
-    if not song or song["id"] not in video_file_map:
-        raise HTTPException(status_code=404, detail="Not found")
-    queue_list.append(song)
-    if player.is_playing() == 0 and current_song is None: play_next_in_queue()
-    return {"status": "added", "queue": queue_list}
+@app.get("/albums")
+def get_albums(q: str = "", limit: int = 100):
+  q_clean = q.strip().lower()
+  seen = set()
+  albums = []
+  for s in songs_db:
+    alb = s["album"]
+    if not alb or alb in seen:
+      continue
+    if q_clean and q_clean not in alb.lower():
+      continue
+    seen.add(alb)
+    albums.append(alb)
+    if len(albums) >= limit:
+      break
+  return {"albums": albums}
 
-@app.post("/queue/priority/{index}")
-def move_to_top(index: int):
-    if 0 <= index < len(queue_list): queue_list.insert(0, queue_list.pop(index))
-    return {"queue": queue_list}
 
-@app.delete("/queue/remove/{index}")
-def remove_from_queue(index: int):
-    if 0 <= index < len(queue_list): queue_list.pop(index)
-    return {"queue": queue_list}
+@app.post("/queue/add")
+def add_to_queue(req: SongRequest):
+  found = next((s for s in songs_db if s["code"] == req.code), None)
+  if not found:
+    path = video_index.get(req.code)
+    if not path:
+      raise HTTPException(status_code=404, detail="Song not found")
+    found = {
+        "code": req.code,
+        "title": f"Song {req.code}",
+        "artist": "",
+        "album": "",
+        "path": path,
+    }
+
+  if not current_song and player.is_playing() == 0:
+    play_media_file(found)
+    return {"message": "Playing now", "queue_count": len(song_queue)}
+
+  song_queue.append(found)
+  return {"message": "Added to queue", "queue_count": len(song_queue)}
+
+
+@app.post("/queue/priority")
+def priority_queue(req: SongRequest):
+  existing = next((s for s in song_queue if s["code"] == req.code), None)
+  if existing:
+    song_queue.remove(existing)
+    song_queue.appendleft(existing)
+  else:
+    found = next((s for s in songs_db if s["code"] == req.code), None)
+    if found:
+      song_queue.appendleft(found)
+  return {"queue": list(song_queue), "queue_count": len(song_queue)}
+
+
+@app.post("/queue/remove")
+def remove_from_queue(req: SongRequest):
+  existing = next((s for s in song_queue if s["code"] == req.code), None)
+  if existing:
+    song_queue.remove(existing)
+  return {"queue": list(song_queue), "queue_count": len(song_queue)}
+
 
 @app.post("/control/{action}")
-def control_player(action: str, value: int = 0):
-    global vocal_off, repeat_mode
-    if action == "play_pause": player.pause() if player.is_playing() else player.play()
-    elif action == "stop": player.stop()
-    elif action == "next": play_next_in_queue()
-    elif action == "restart": player.set_time(0)
-    elif action == "repeat": repeat_mode = not repeat_mode
-    elif action == "rewind": player.set_time(max(0, player.get_time() - 10000))
-    elif action == "forward": player.set_time(player.get_time() + 10000)
-    elif action == "volume": player.audio_set_volume(max(0, min(100, value)))
-    elif action == "vocal_toggle": vocal_off = not vocal_off; player.audio_set_channel(4 if vocal_off else 1)
-    return {"status": "ok", "vocal_off": vocal_off, "repeat": repeat_mode}
+def control_player(action: str):
+  global is_repeat, vocal_mode, current_song
 
-def get_local_ip():
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); s.connect(("8.8.8.8", 80))
-        ip = next(iter(s.getsockname())); s.close(); return ip
-    except Exception: return "127.0.0.1"
+  if action == "play_pause":
+    player.pause()
+  elif action == "stop":
+    player.stop()
+    current_song = None
+  elif action == "repeat":
+    is_repeat = not is_repeat
+  elif action == "rewind":
+    curr = player.get_time()
+    player.set_time(max(0, curr - 10000))
+  elif action == "forward":
+    curr = player.get_time()
+    player.set_time(curr + 10000)
+  elif action == "restart":
+    player.set_time(0)
+  elif action == "next":
+    if len(song_queue) > 0:
+      next_song = song_queue.popleft()
+      play_media_file(next_song)
+    else:
+      player.stop()
+      current_song = None
+  elif action == "vocal":
+    tracks = player.audio_get_track_description()
+    valid_tracks = [t[0] for t in tracks if t[0] != -1] if tracks else []
+    if len(valid_tracks) >= 2:
+      curr_track = player.audio_get_track()
+      next_track = (
+          valid_tracks[1] if curr_track == valid_tracks[0] else valid_tracks[0]
+      )
+      player.audio_set_track(next_track)
+      vocal_mode = 1 if next_track == valid_tracks[1] else 0
+    else:
+      if vocal_mode == 0:
+        player.audio_set_channel(4)
+        vocal_mode = 1
+      else:
+        player.audio_set_channel(1)
+        vocal_mode = 0
+  elif action == "vol_up":
+    vol = player.audio_get_volume()
+    player.audio_set_volume(min(150, vol + 10))
+  elif action == "vol_down":
+    vol = player.audio_get_volume()
+    player.audio_set_volume(max(0, vol - 10))
+  elif action == "mute":
+    player.audio_toggle_mute()
+
+  return get_status()
+
 
 if __name__ == "__main__":
-    print("=" * 50); print(f"Phone App IP Address: {get_local_ip()}"); print("=" * 50)
-    uvicorn.run(app, host="0.0.0.0", port=8000)
-
+  uvicorn.run(app, host="0.0.0.0", port=8000)
 

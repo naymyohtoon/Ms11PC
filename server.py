@@ -147,17 +147,17 @@ def load_databases():
             for row in ws.iter_rows(min_row=2, values_only=True):
                 if not row or len(row) < 2:
                     continue
-                code = normalize_code(row)
-                raw_title = row
+                code = normalize_code(row[0])
+                raw_title = row[1]
                 if not code or not raw_title:
                     continue
 
                 title = str(raw_title).strip()
-                artist = str(row).strip() if len(row) > 2 and row else "အမည်မသိ"
-                coartist = str(row).strip() if len(row) > 3 and row else ""
+                artist = str(row[2]).strip() if len(row) > 2 and row[2] else "အမည်မသိ"
+                coartist = str(row[3]).strip() if len(row) > 3 and row[3] else ""
                 if coartist:
                     artist = f"{artist} + {coartist}"
-                album = str(row).strip() if len(row) > 4 and row else ""
+                album = str(row[4]).strip() if len(row) > 4 and row[4] else ""
 
                 file_path = myanmar_video_index.get(code, "")
                 temp_songs.append({
@@ -181,8 +181,8 @@ def load_databases():
             for row in ws.iter_rows(min_row=2, values_only=True):
                 if not row or len(row) < 2:
                     continue
-                code = normalize_code(row)
-                raw_title = row
+                code = normalize_code(row[0])
+                raw_title = row[1]
                 if not code or not raw_title:
                     continue
 

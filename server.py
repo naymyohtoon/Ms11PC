@@ -756,7 +756,7 @@ class NMHDesktopUI:
                 pass
             self.num_input = ""
             self.lbl_num.config(text="သီချင်းနံပါတ် ရိုက်ထည့်ပါ")
-     def show_list_view(self, mode: str, title: str, filter_val: str = ""):
+    def show_list_view(self, mode: str, title: str, filter_val: str = ""):
         self.screen_mode = mode
         self.filter_val = filter_val
         self.clear_right_panel()

@@ -142,7 +142,7 @@ def load_databases():
 
     if os.path.exists(MYANMAR_EXCEL):
         try:
-            wb = openpyxl.load_workbook(MYANMAR_EXCEL, read_only=True, data_only=True)
+            wb = openpyxl.load_workbook(MYANMAR_EXCEL, data_only=True)
             ws = wb.active
             for row in ws.iter_rows(min_row=2, values_only=True):
                 if not row or len(row) < 2:
@@ -171,12 +171,12 @@ def load_databases():
                     "path": file_path,
                 })
             wb.close()
-        except Exception:
-            pass
+        except Exception as e:
+            print("Myanmar Excel Error:", e)
 
     if os.path.exists(DISCO_EXCEL):
         try:
-            wb = openpyxl.load_workbook(DISCO_EXCEL, read_only=True, data_only=True)
+            wb = openpyxl.load_workbook(DISCO_EXCEL, data_only=True)
             ws = wb.active
             for row in ws.iter_rows(min_row=2, values_only=True):
                 if not row or len(row) < 2:
@@ -198,8 +198,8 @@ def load_databases():
                     "path": file_path,
                 })
             wb.close()
-        except Exception:
-            pass
+        except Exception as e:
+            print("Disco Excel Error:", e)
     else:
         sorted_keys = sorted([k for k in disco_video_index.keys() if k.isdigit()], key=lambda x: int(x))
         for code in sorted_keys:

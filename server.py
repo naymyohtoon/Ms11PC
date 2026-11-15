@@ -23,7 +23,7 @@ def resource_path(relative_path: str) -> str:
     return os.path.join(base_path, relative_path)
 
 
-app = FastAPI(title="MI7 Karaoke Server")
+app = FastAPI(title="NMH Karaoke Server")
 
 app.add_middleware(
     CORSMiddleware,
@@ -51,13 +51,13 @@ def get_local_ip() -> str:
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("10.255.255.255", 1))
-        ip = s.getsockname()[0]
+        ip = s.getsockname()
         s.close()
         return ip
     except Exception:
         try:
             hostname = socket.gethostname()
-            for ip in socket.gethostbyname_ex(hostname)[2]:
+            for ip in socket.gethostbyname_ex(hostname):
                 if not ip.startswith("127.") and not ip.startswith("169.254."):
                     return ip
         except Exception:
@@ -79,6 +79,8 @@ def normalize_code(raw_code) -> str:
 songs_db: List[Dict] = []
 myanmar_video_index: Dict[str, str] = {}
 disco_video_index: Dict[str, str] = {}
+
+
 def scan_videos():
     global myanmar_video_index, disco_video_index
     m_index = {}
@@ -91,7 +93,7 @@ def scan_videos():
         for root, _, files in os.walk(folder_path):
             for file in files:
                 if file.lower().endswith(VIDEO_EXTENSIONS):
-                    name_no_ext = os.path.splitext(file)[0].strip()
+                    name_no_ext = os.path.splitext(file).strip()
                     full_path = os.path.join(root, file)
                     match = re.search(r"(\d+)", name_no_ext)
                     if match:
@@ -105,7 +107,7 @@ def scan_videos():
         for root, _, files in os.walk(folder_path):
             for file in files:
                 if file.lower().endswith(VIDEO_EXTENSIONS):
-                    name_no_ext = os.path.splitext(file)[0].strip()
+                    name_no_ext = os.path.splitext(file).strip()
                     full_path = os.path.join(root, file)
                     match = re.search(r"(\d+)", name_no_ext)
                     if match:
@@ -126,17 +128,17 @@ def load_databases():
         for row in ws.iter_rows(min_row=2, values_only=True):
             if not row or len(row) < 2:
                 continue
-            code = normalize_code(row[0])
-            raw_title = row[1]
+            code = normalize_code(row)
+            raw_title = row
             if not code or not raw_title:
                 continue
 
             title = str(raw_title).strip()
-            artist = str(row[2]).strip() if len(row) > 2 and row[2] else "အမည်မသိ"
-            coartist = str(row[3]).strip() if len(row) > 3 and row[3] else ""
+            artist = str(row).strip() if len(row) > 2 and row else "အမည်မသိ"
+            coartist = str(row).strip() if len(row) > 3 and row else ""
             if coartist:
                 artist = f"{artist} + {coartist}"
-            album = str(row[4]).strip() if len(row) > 4 and row[4] else ""
+            album = str(row).strip() if len(row) > 4 and row else ""
 
             file_path = myanmar_video_index.get(code, "")
             temp_songs.append({
@@ -157,8 +159,8 @@ def load_databases():
         for row in ws.iter_rows(min_row=2, values_only=True):
             if not row or len(row) < 2:
                 continue
-            code = normalize_code(row[0])
-            raw_title = row[1]
+            code = normalize_code(row)
+            raw_title = row
             if not code or not raw_title:
                 continue
 
@@ -251,10 +253,11 @@ def get_status():
 def search_songs(
     q: str = Query(""),
     category: str = Query("MYANMAR"),
-    limit: int = Query(150, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
 ):
     q_clean = q.strip().lower()
-    results = []
+    matched = []
     for s in songs_db:
         if s["category"] != category:
             continue
@@ -266,14 +269,16 @@ def search_songs(
                 and q_clean not in s["album"].lower()
             ):
                 continue
-        results.append(s)
-        if len(results) >= limit:
-            break
-    return results
+        matched.append(s)
+    return matched[offset : offset + limit]
 
 
 @app.get("/browse/artists")
-def browse_artists(q: str = Query("")):
+def browse_artists(
+    q: str = Query(""),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
+):
     q_clean = q.strip().lower()
     seen = set()
     artists = []
@@ -287,13 +292,15 @@ def browse_artists(q: str = Query("")):
             continue
         seen.add(art)
         artists.append(art)
-        if len(artists) >= 150:
-            break
-    return artists
+    return artists[offset : offset + limit]
 
 
 @app.get("/browse/albums")
-def browse_albums(q: str = Query("")):
+def browse_albums(
+    q: str = Query(""),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
+):
     q_clean = q.strip().lower()
     seen = set()
     albums = []
@@ -307,13 +314,16 @@ def browse_albums(q: str = Query("")):
             continue
         seen.add(alb)
         albums.append(alb)
-        if len(albums) >= 150:
-            break
-    return albums
+    return albums[offset : offset + limit]
 
 
 @app.get("/browse/filter")
-def browse_filter(artist: str = Query(""), album: str = Query("")):
+def browse_filter(
+    artist: str = Query(""),
+    album: str = Query(""),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
+):
     results = []
     for s in songs_db:
         if s["category"] != "MYANMAR":
@@ -322,9 +332,7 @@ def browse_filter(artist: str = Query(""), album: str = Query("")):
             results.append(s)
         elif album and s["album"] == album:
             results.append(s)
-        if len(results) >= 200:
-            break
-    return results
+    return results[offset : offset + limit]
 
 
 @app.get("/queue")
@@ -438,10 +446,10 @@ def control_player(action: str, value: int = Query(0)):
         player.audio_set_volume(max(0, min(150, value)))
 
     return get_status()
-class MI7DesktopUI:
+class NMHDesktopUI:
     def __init__(self, root: tk.Tk):
         self.root = root
-        self.root.title("Microstack V7.1.5 - MI7 Karaoke System")
+        self.root.title("NMH Karaoke System")
         self.root.attributes("-fullscreen", True)
         self.root.configure(bg="#1E2226")
         self.root.bind("<Escape>", lambda e: self.root.attributes("-fullscreen", False))
@@ -452,7 +460,6 @@ class MI7DesktopUI:
         self.refresh_loop()
 
     def build_ui(self):
-        # Top Bar (Logo တစ်ဝက်ကျယ် + Now Playing + App IP Address)
         top_frame = tk.Frame(self.root, bg="#121518", height=75)
         top_frame.pack(fill=tk.X, padx=10, pady=8)
         top_frame.pack_propagate(False)
@@ -464,7 +471,7 @@ class MI7DesktopUI:
             tk.Label(top_frame, image=self.logo_photo, bg="#121518").pack(side=tk.LEFT, padx=8)
         except Exception:
             tk.Label(
-                top_frame, text="MICROSTACK V7.1.5 (MI7)", font=("Pyidaungsu", 18, "bold"),
+                top_frame, text="NMH KARAOKE SYSTEM", font=("Pyidaungsu", 18, "bold"),
                 fg="#00E5FF", bg="#121518"
             ).pack(side=tk.LEFT, padx=15)
 
@@ -481,11 +488,9 @@ class MI7DesktopUI:
         )
         self.lbl_ip.pack(side=tk.RIGHT, padx=10)
 
-        # Main Body
         body_frame = tk.Frame(self.root, bg="#1E2226")
         body_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=4)
 
-        # ဘယ်ဘက်ခြမ်း: ရွေးထားသောသီချင်းများ (Queue)
         left_frame = tk.Frame(body_frame, bg="#262B30", width=380, bd=1, relief=tk.SOLID)
         left_frame.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 10))
         left_frame.pack_propagate(False)
@@ -501,7 +506,6 @@ class MI7DesktopUI:
         )
         self.queue_listbox.pack(fill=tk.BOTH, expand=True, padx=6, pady=6)
 
-        # ညာဘက်ခြမ်း: ရှာဖွေရေးနှင့် သီချင်းစာရင်း
         right_frame = tk.Frame(body_frame, bg="#262B30", bd=1, relief=tk.SOLID)
         right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
 
@@ -536,7 +540,6 @@ class MI7DesktopUI:
         self.song_listbox.pack(fill=tk.BOTH, expand=True, padx=8, pady=6)
         self.song_listbox.bind("<Double-Button-1>", self.on_song_double_click)
 
-        # Bottom Control Bar
         bottom_bar = tk.Frame(self.root, bg="#121518", height=52)
         bottom_bar.pack(fill=tk.X, padx=10, pady=(4, 8))
 
@@ -566,7 +569,6 @@ class MI7DesktopUI:
         q = self.search_var.get().strip().lower()
         self.song_listbox.delete(0, tk.END)
         self.displayed_songs = []
-        count = 0
         for s in songs_db:
             if s["category"] != self.current_cat:
                 continue
@@ -576,15 +578,12 @@ class MI7DesktopUI:
             artist_part = f" - {s['artist']}" if s["artist"] else ""
             status_mark = "✔" if s["has_file"] else "✖"
             self.song_listbox.insert(tk.END, f" [{s['code']}]  {s['title']}{artist_part}   ({status_mark})")
-            count += 1
-            if count >= 200:
-                break
 
     def on_song_double_click(self, event):
         sel = self.song_listbox.curselection()
         if not sel:
             return
-        song = self.displayed_songs[sel[0]]
+        song = self.displayed_songs[sel]
         try:
             add_to_queue(song["id"])
         except Exception:
@@ -617,9 +616,8 @@ def run_api_server():
 if __name__ == "__main__":
     threading.Thread(target=run_api_server, daemon=True).start()
     root = tk.Tk()
-    ui = MI7DesktopUI(root)
+    ui = NMHDesktopUI(root)
     root.mainloop()
-
 
 
 

@@ -8,6 +8,8 @@ import threading
 import time
 import tkinter as tk
 from typing import Dict, List, Optional
+import xml.etree.ElementTree as ET
+import zipfile
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 import openpyxl
@@ -17,7 +19,6 @@ import vlc
 
 
 def open_firewall_port():
-    """Windows Firewall တွင် Port 8000 ကို အလိုအလျောက် ဖွင့်ပေးခြင်း"""
     try:
         subprocess.run(
             'netsh advfirewall firewall add rule name="NMH Karaoke Server" dir=in action=allow protocol=TCP localport=8000',
@@ -48,8 +49,14 @@ app.add_middleware(
 )
 
 BASE_DRIVE = "J:\\"
-MYANMAR_EXCEL = os.path.join(BASE_DRIVE, "q2.xlsx")
-DISCO_EXCEL = os.path.join(BASE_DRIVE, "disco.xlsx")
+MYANMAR_EXCEL_CANDIDATES = [
+    os.path.join(BASE_DRIVE, "q2.xlsx"),
+    os.path.join(BASE_DRIVE, "q2.xls"),
+]
+DISCO_EXCEL_CANDIDATES = [
+    os.path.join(BASE_DRIVE, "disco.xlsx"),
+    os.path.join(BASE_DRIVE, "disco.xls"),
+]
 
 MYANMAR_FOLDERS = ["Myanmar_5", "MI5_New_Song"]
 DISCO_FOLDERS = ["DiscoVideo"]
@@ -65,13 +72,12 @@ def get_local_ip() -> str:
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("10.255.255.255", 1))
-        ip = s.getsockname()[0]
+        ip, _ = s.getsockname()
         s.close()
         if ip and "." in ip and not ip.startswith("127."):
             return ip
     except Exception:
         pass
-
     try:
         hostname = socket.gethostname()
         _, _, ip_list = socket.gethostbyname_ex(hostname)
@@ -111,7 +117,8 @@ def scan_videos():
         for root, _, files in os.walk(folder_path):
             for file in files:
                 if file.lower().endswith(VIDEO_EXTENSIONS):
-                    name_no_ext = os.path.splitext(file).strip()
+                    name_no_ext, _ = os.path.splitext(file)
+                    name_no_ext = name_no_ext.strip()
                     full_path = os.path.join(root, file)
                     match = re.search(r"(\d+)", name_no_ext)
                     if match:
@@ -125,7 +132,8 @@ def scan_videos():
         for root, _, files in os.walk(folder_path):
             for file in files:
                 if file.lower().endswith(VIDEO_EXTENSIONS):
-                    name_no_ext = os.path.splitext(file).strip()
+                    name_no_ext, _ = os.path.splitext(file)
+                    name_no_ext = name_no_ext.strip()
                     full_path = os.path.join(root, file)
                     match = re.search(r"(\d+)", name_no_ext)
                     if match:
@@ -134,30 +142,85 @@ def scan_videos():
 
     myanmar_video_index = m_index
     disco_video_index = d_index
+    def read_excel_rows_all_methods(file_path: str) -> List[List]:
+    rows_out = []
+    if not os.path.exists(file_path):
+        return rows_out
+
+    try:
+        wb = openpyxl.load_workbook(file_path, data_only=True)
+        ws = wb.active
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            if row:
+                rows_out.append(list(row))
+        wb.close()
+        if rows_out:
+            return rows_out
+    except Exception:
+        pass
+
+    try:
+        with zipfile.ZipFile(file_path, "r") as z:
+            shared = []
+            if "xl/sharedStrings.xml" in z.namelist():
+                root = ET.fromstring(z.read("xl/sharedStrings.xml"))
+                for si in root:
+                    texts = [t.text or "" for t in si.iter() if t.tag.endswith("}t")]
+                    shared.append("".join(texts))
+            sheet_name = "xl/worksheets/sheet1.xml"
+            if sheet_name in z.namelist():
+                sroot = ET.fromstring(z.read(sheet_name))
+                all_r = [r for r in sroot.iter() if r.tag.endswith("}row")]
+                for r in all_r[1:]:
+                    row_vals = []
+                    for c in r:
+                        if not c.tag.endswith("}c"):
+                            continue
+                        ctype = c.attrib.get("t", "")
+                        val = ""
+                        for child in c:
+                            if child.tag.endswith("}v") and child.text:
+                                if ctype == "s" and child.text.isdigit():
+                                    idx = int(child.text)
+                                    val = shared[idx] if idx < len(shared) else ""
+                                else:
+                                    val = child.text
+                            elif child.tag.endswith("}is"):
+                                texts = [t.text or "" for t in child.iter() if t.tag.endswith("}t")]
+                                val = "".join(texts)
+                        row_vals.append(val)
+                    if row_vals:
+                        rows_out.append(row_vals)
+    except Exception:
+        pass
+
+    return rows_out
 
 
 def load_databases():
     global songs_db
     temp_songs = []
 
-    if os.path.exists(MYANMAR_EXCEL):
-        try:
-            wb = openpyxl.load_workbook(MYANMAR_EXCEL, data_only=True)
-            ws = wb.active
-            for row in ws.iter_rows(min_row=2, values_only=True):
-                if not row or len(row) < 2:
-                    continue
-                code = normalize_code(row[0])
-                raw_title = row[1]
-                if not code or not raw_title:
+    for m_path in MYANMAR_EXCEL_CANDIDATES:
+        if os.path.exists(m_path):
+            raw_rows = read_excel_rows_all_methods(m_path)
+            for row in raw_rows:
+                vals = list(row)
+                r_code = vals.pop(0) if vals else None
+                r_title = vals.pop(0) if vals else None
+                r_artist = vals.pop(0) if vals else None
+                r_coartist = vals.pop(0) if vals else None
+                r_album = vals.pop(0) if vals else None
+
+                code = normalize_code(r_code)
+                if not code or not r_title:
                     continue
 
-                title = str(raw_title).strip()
-                artist = str(row[2]).strip() if len(row) > 2 and row[2] else "အမည်မသိ"
-                coartist = str(row[3]).strip() if len(row) > 3 and row[3] else ""
-                if coartist:
-                    artist = f"{artist} + {coartist}"
-                album = str(row[4]).strip() if len(row) > 4 and row[4] else ""
+                title = str(r_title).strip()
+                artist = str(r_artist).strip() if r_artist else "အမည်မသိ"
+                if r_coartist and str(r_coartist).strip():
+                    artist = f"{artist} + {str(r_coartist).strip()}"
+                album = str(r_album).strip() if r_album else ""
 
                 file_path = myanmar_video_index.get(code, "")
                 temp_songs.append({
@@ -170,39 +233,52 @@ def load_databases():
                     "has_file": bool(file_path),
                     "path": file_path,
                 })
-            wb.close()
-        except Exception as e:
-            print("Myanmar Excel Error:", e)
+            if any(s["category"] == "MYANMAR" for s in temp_songs):
+                break
 
-    if os.path.exists(DISCO_EXCEL):
-        try:
-            wb = openpyxl.load_workbook(DISCO_EXCEL, data_only=True)
-            ws = wb.active
-            for row in ws.iter_rows(min_row=2, values_only=True):
-                if not row or len(row) < 2:
-                    continue
-                code = normalize_code(row[0])
-                raw_title = row[1]
-                if not code or not raw_title:
+    if not any(s["category"] == "MYANMAR" for s in temp_songs):
+        sorted_m = sorted([k for k in myanmar_video_index.keys() if k.isdigit()], key=lambda x: int(x))
+        for code in sorted_m:
+            temp_songs.append({
+                "id": code,
+                "code": code,
+                "title": f"Myanmar Song {code}",
+                "artist": "အမည်မသိ",
+                "album": "",
+                "category": "MYANMAR",
+                "has_file": True,
+                "path": myanmar_video_index[code],
+            })
+
+    for d_path in DISCO_EXCEL_CANDIDATES:
+        if os.path.exists(d_path):
+            raw_rows = read_excel_rows_all_methods(d_path)
+            for row in raw_rows:
+                vals = list(row)
+                r_code = vals.pop(0) if vals else None
+                r_title = vals.pop(0) if vals else None
+
+                code = normalize_code(r_code)
+                if not code or not r_title:
                     continue
 
                 file_path = disco_video_index.get(code, "")
                 temp_songs.append({
                     "id": f"D{code}",
                     "code": code,
-                    "title": str(raw_title).strip(),
+                    "title": str(r_title).strip(),
                     "artist": "",
                     "album": "",
                     "category": "DISCO",
                     "has_file": bool(file_path),
                     "path": file_path,
                 })
-            wb.close()
-        except Exception as e:
-            print("Disco Excel Error:", e)
-    else:
-        sorted_keys = sorted([k for k in disco_video_index.keys() if k.isdigit()], key=lambda x: int(x))
-        for code in sorted_keys:
+            if any(s["category"] == "DISCO" for s in temp_songs):
+                break
+
+    if not any(s["category"] == "DISCO" for s in temp_songs):
+        sorted_d = sorted([k for k in disco_video_index.keys() if k.isdigit()], key=lambda x: int(x))
+        for code in sorted_d:
             temp_songs.append({
                 "id": f"D{code}",
                 "code": code,
@@ -215,9 +291,7 @@ def load_databases():
             })
 
     songs_db = temp_songs
-
-
-vlc_instance = vlc.Instance("--no-video-title-show", "--fullscreen")
+        vlc_instance = vlc.Instance("--no-video-title-show", "--fullscreen")
 player = vlc_instance.media_player_new()
 player.set_fullscreen(True)
 
@@ -259,6 +333,8 @@ def queue_watcher():
 
 
 threading.Thread(target=queue_watcher, daemon=True).start()
+
+
 @app.get("/status")
 def get_status():
     return {
@@ -357,8 +433,6 @@ def browse_filter(
         elif album and s["album"] == album:
             results.append(s)
     return results[offset : offset + limit]
-
-
 @app.get("/queue")
 def get_queue():
     return list(song_queue)
@@ -453,12 +527,12 @@ def control_player(action: str, value: int = Query(0)):
             current_song = None
     elif action == "vocal_toggle":
         tracks = player.audio_get_track_description()
-        valid_tracks = [t for t in tracks if t != -1] if tracks else []
+        valid_tracks = [t[0] for t in tracks if t[0] != -1] if tracks else []
         if len(valid_tracks) >= 2:
             curr_track = player.audio_get_track()
-            next_track = valid_tracks if curr_track == valid_tracks else valid_tracks
+            next_track = valid_tracks[1] if curr_track == valid_tracks[0] else valid_tracks[0]
             player.audio_set_track(next_track)
-            vocal_off = next_track == valid_tracks
+            vocal_off = next_track == valid_tracks[1]
         else:
             if not vocal_off:
                 player.audio_set_channel(4)
@@ -470,6 +544,8 @@ def control_player(action: str, value: int = Query(0)):
         player.audio_set_volume(max(0, min(150, value)))
 
     return get_status()
+
+
 class NMHDesktopUI:
     def __init__(self, root: tk.Tk):
         self.root = root
@@ -505,7 +581,7 @@ class NMHDesktopUI:
             ).pack(side=tk.LEFT, padx=15)
 
         self.lbl_playing = tk.Label(
-            top_frame, text="သီချင်း မဖွင့်ရသေးပါ (Song Playing...)", font=("Pyidaungsu", 13, "bold"),
+            top_frame, text="သီချင်းများ ဖတ်ရှုနေပါသည်...", font=("Pyidaungsu", 13, "bold"),
             fg="#64FFDA", bg="#263238", anchor="w", padx=12
         )
         self.lbl_playing.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=10, pady=10)
@@ -568,8 +644,7 @@ class NMHDesktopUI:
             ).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=2, pady=6)
 
         self.show_home_view()
-
-    def clear_right_panel(self):
+                def clear_right_panel(self):
         for w in self.right_panel.winfo_children():
             w.destroy()
 
@@ -609,6 +684,7 @@ class NMHDesktopUI:
                 sub_cards, text=label, font=("Pyidaungsu", 13, "bold"),
                 bg=bg_col, fg="white", command=cmd
             ).pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5)
+
     def draw_tree_lines(self, event):
         c = event.widget
         c.delete("all")
@@ -617,7 +693,7 @@ class NMHDesktopUI:
         mid_y = h * 0.45
         c.create_line(root_x, 0, root_x, mid_y, fill="#64FFDA", width=2)
         targets = [w * 0.125, w * 0.375, w * 0.625, w * 0.875]
-        c.create_line(targets[0], mid_y, targets[3], mid_y, fill="#64FFDA", width=2)
+        c.create_line(targets[0], mid_y, targets[-1], mid_y, fill="#64FFDA", width=2)
         for tx in targets:
             c.create_line(tx, mid_y, tx, h, fill="#64FFDA", width=2)
 
@@ -676,8 +752,7 @@ class NMHDesktopUI:
                 pass
             self.num_input = ""
             self.lbl_num.config(text="သီချင်းနံပါတ် ရိုက်ထည့်ပါ")
-
-    def show_list_view(self, mode: str, title: str, filter_val: str = ""):
+                def show_list_view(self, mode: str, title: str, filter_val: str = ""):
         self.screen_mode = mode
         self.filter_val = filter_val
         self.clear_right_panel()
@@ -753,11 +828,14 @@ class NMHDesktopUI:
             remove_from_queue(sel[0])
 
     def refresh_loop(self):
+        total_cnt = len(songs_db)
         if current_song:
             art = f" - {current_song['artist']}" if current_song.get("artist") else ""
             self.lbl_playing.config(text=f"Playing: [{current_song['code']}] {current_song['title']}{art}")
+        elif total_cnt > 0:
+            self.lbl_playing.config(text=f"အသင့်ဖြစ်ပါပြီ (စုစုပေါင်း သီချင်း {total_cnt} ပုဒ်)")
         else:
-            self.lbl_playing.config(text="သီချင်း မဖွင့်ရသေးပါ (Song Playing...)")
+            self.lbl_playing.config(text="J:\\ မှ သီချင်းများ ဖတ်ရှုနေပါသည်...")
 
         q_list = list(song_queue)
         self.q_header.config(text=f"ရွေးထားသောသီချင်းများ ({len(q_list)})")
@@ -765,6 +843,10 @@ class NMHDesktopUI:
             self.queue_listbox.delete(0, tk.END)
             for idx, item in enumerate(q_list):
                 self.queue_listbox.insert(tk.END, f" {idx + 1}. [{item['code']}] {item['title']}")
+
+        if total_cnt > 0 and hasattr(self, "listbox") and self.listbox.winfo_exists():
+            if self.listbox.size() == 0 and self.search_var.get() == "":
+                self.populate_list()
 
         self.root.after(1000, self.refresh_loop)
 

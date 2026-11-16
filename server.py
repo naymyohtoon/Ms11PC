@@ -2,11 +2,13 @@ from collections import deque
 import os
 import re
 import socket
+import string
 import subprocess
 import sys
 import threading
 import time
 import tkinter as tk
+from tkinter import filedialog
 from typing import Dict, List, Optional
 import xml.etree.ElementTree as ET
 import zipfile
@@ -38,6 +40,20 @@ def resource_path(relative_path: str) -> str:
     return os.path.join(base_path, relative_path)
 
 
+def detect_karaoke_drive() -> str:
+    """C: မှ Z: အထိ Drive အားလုံးကို စစ်ဆေးပြီး Karaoke ဖိုင်များရှိသော Drive ကို အလိုအလျောက် ရှာဖွေခြင်း"""
+    preferred = ["J:\\", "D:\\", "E:\\", "F:\\", "G:\\", "H:\\", "I:\\", "K:\\"]
+    all_drives = preferred + [f"{d}:\\" for d in string.ascii_uppercase if f"{d}:\\" not in preferred]
+    markers = ["q2.xlsx", "q2.xls", "disco.xlsx", "disco.xls", "Myanmar_5", "MI5_New_Song", "DiscoVideo"]
+
+    for drv in all_drives:
+        if os.path.exists(drv):
+            for m in markers:
+                if os.path.exists(os.path.join(drv, m)):
+                    return drv
+    return "J:\\"
+
+
 app = FastAPI(title="NMH Karaoke Server")
 
 app.add_middleware(
@@ -48,16 +64,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-BASE_DRIVE = "J:\\"
-MYANMAR_EXCEL_CANDIDATES = [
-    os.path.join(BASE_DRIVE, "q2.xlsx"),
-    os.path.join(BASE_DRIVE, "q2.xls"),
-]
-DISCO_EXCEL_CANDIDATES = [
-    os.path.join(BASE_DRIVE, "disco.xlsx"),
-    os.path.join(BASE_DRIVE, "disco.xls"),
-]
-
+BASE_DRIVE = detect_karaoke_drive()
 MYANMAR_FOLDERS = ["Myanmar_5", "MI5_New_Song"]
 DISCO_FOLDERS = ["DiscoVideo"]
 VIDEO_EXTENSIONS = (".mp4", ".mkv", ".dat", ".vob", ".avi", ".mpg", ".mpeg")
@@ -125,7 +132,6 @@ def scan_videos():
                         m_index[match.group(1)] = full_path
                     m_index[name_no_ext] = full_path
 
-    
     for folder in DISCO_FOLDERS:
         folder_path = os.path.join(BASE_DRIVE, folder)
         if not os.path.exists(folder_path):
@@ -141,11 +147,9 @@ def scan_videos():
                         d_index[match.group(1)] = full_path
                     d_index[name_no_ext] = full_path
 
-    
     myanmar_video_index = m_index
     disco_video_index = d_index
-
-def read_excel_rows_all_methods(file_path: str) -> List[List]:
+    def read_excel_rows_all_methods(file_path: str) -> List[List]:
     rows_out = []
     if not os.path.exists(file_path):
         return rows_out
@@ -204,7 +208,16 @@ def load_databases():
     global songs_db
     temp_songs = []
 
-    for m_path in MYANMAR_EXCEL_CANDIDATES:
+    myanmar_candidates = [
+        os.path.join(BASE_DRIVE, "q2.xlsx"),
+        os.path.join(BASE_DRIVE, "q2.xls"),
+    ]
+    disco_candidates = [
+        os.path.join(BASE_DRIVE, "disco.xlsx"),
+        os.path.join(BASE_DRIVE, "disco.xls"),
+    ]
+
+    for m_path in myanmar_candidates:
         if os.path.exists(m_path):
             raw_rows = read_excel_rows_all_methods(m_path)
             for row in raw_rows:
@@ -253,7 +266,7 @@ def load_databases():
                 "path": myanmar_video_index[code],
             })
 
-    for d_path in DISCO_EXCEL_CANDIDATES:
+    for d_path in disco_candidates:
         if os.path.exists(d_path):
             raw_rows = read_excel_rows_all_methods(d_path)
             for row in raw_rows:
@@ -295,18 +308,53 @@ def load_databases():
 
     songs_db = temp_songs
 
-vlc_instance = vlc.Instance("--no-video-title-show", "--fullscreen")
+
+def reload_drive(new_drive: str):
+    global BASE_DRIVE
+    if not new_drive.endswith("\\"):
+        new_drive = new_drive + "\\"
+    BASE_DRIVE = new_drive
+    scan_videos()
+    load_databases()
+                                    vlc_instance = vlc.Instance("--no-video-title-show", "--fullscreen")
 player = vlc_instance.media_player_new()
 player.set_fullscreen(True)
 
 song_queue = deque()
 current_song: Optional[Dict] = None
 is_repeat = False
-vocal_off = False
+vocal_mode = 0  # 0: Stereo, 1: Left, 2: Right, 3: Track 2
+VOCAL_LABELS = ["Stereo (အစုံ)", "Left (ဘယ်)", "Right (ညာ)", "Track 2 (တီးလုံး)"]
+
+
+def apply_vocal_mode(mode: int):
+    global vocal_mode
+    vocal_mode = mode % 4
+    tracks = player.audio_get_track_description()
+    valid_tracks = [t[0] for t in tracks if t[0] != -1] if tracks else []
+
+    if vocal_mode == 0:
+        if len(valid_tracks) >= 1:
+            player.audio_set_track(valid_tracks[0])
+        player.audio_set_channel(1)
+    elif vocal_mode == 1:
+        if len(valid_tracks) >= 1:
+            player.audio_set_track(valid_tracks[0])
+        player.audio_set_channel(3)
+    elif vocal_mode == 2:
+        if len(valid_tracks) >= 1:
+            player.audio_set_track(valid_tracks[0])
+        player.audio_set_channel(4)
+    elif vocal_mode == 3:
+        if len(valid_tracks) >= 2:
+            player.audio_set_track(valid_tracks[1])
+            player.audio_set_channel(1)
+        else:
+            player.audio_set_channel(4)
 
 
 def play_media_file(song_item: Dict):
-    global current_song, vocal_off
+    global current_song, vocal_mode
     path = song_item.get("path")
     if not path or not os.path.exists(path):
         return False
@@ -317,7 +365,7 @@ def play_media_file(song_item: Dict):
     player.play()
     time.sleep(0.3)
     player.set_fullscreen(True)
-    vocal_off = False
+    vocal_mode = 0
     return True
 
 
@@ -344,11 +392,14 @@ def get_status():
     return {
         "connected": True,
         "server_ip": get_local_ip(),
+        "drive": BASE_DRIVE,
         "current_song": current_song,
         "queue_count": len(song_queue),
         "is_playing": player.is_playing() == 1,
         "repeat": is_repeat,
-        "vocal_off": vocal_off,
+        "vocal_mode": vocal_mode,
+        "vocal_label": VOCAL_LABELS[vocal_mode],
+        "vocal_off": vocal_mode != 0,
         "volume": player.audio_get_volume(),
     }
 
@@ -505,7 +556,7 @@ def remove_from_queue(index: int):
 
 @app.post("/control/{action}")
 def control_player(action: str, value: int = Query(0)):
-    global is_repeat, vocal_off, current_song
+    global is_repeat, current_song
 
     if action == "play_pause":
         player.pause()
@@ -530,24 +581,18 @@ def control_player(action: str, value: int = Query(0)):
             player.stop()
             current_song = None
     elif action == "vocal_toggle":
-        tracks = player.audio_get_track_description()
-        valid_tracks = [t[0] for t in tracks if t[0] != -1] if tracks else []
-        if len(valid_tracks) >= 2:
-            curr_track = player.audio_get_track()
-            next_track = valid_tracks[1] if curr_track == valid_tracks[0] else valid_tracks[0]
-            player.audio_set_track(next_track)
-            vocal_off = next_track == valid_tracks[1]
-        else:
-            if not vocal_off:
-                player.audio_set_channel(4)
-                vocal_off = True
-            else:
-                player.audio_set_channel(1)
-                vocal_off = False
+        apply_vocal_mode(vocal_mode + 1)
+    elif action == "vocal_set":
+        apply_vocal_mode(value)
     elif action == "volume":
         player.audio_set_volume(max(0, min(150, value)))
 
     return get_status()
+
+
+ART_FONT = ("Myanmar Sans Pro", 13, "bold")
+ART_FONT_LG = ("Myanmar Sans Pro", 18, "bold")
+ART_FONT_SM = ("Myanmar Sans Pro", 11, "bold")
 
 
 class NMHDesktopUI:
@@ -555,18 +600,17 @@ class NMHDesktopUI:
         self.root = root
         self.root.title("NMH Karaoke System")
         self.root.attributes("-fullscreen", True)
-        self.root.configure(bg="#23272B")
+        self.root.configure(bg="#1A1D21")
         self.root.bind("<Escape>", lambda e: self.root.attributes("-fullscreen", False))
 
         self.screen_mode = "HOME"
-        self.current_cat = "MYANMAR"
         self.displayed_items = []
         self.num_input = ""
         self.build_ui()
         self.refresh_loop()
 
     def build_ui(self):
-        top_frame = tk.Frame(self.root, bg="#181A1D", height=80)
+        top_frame = tk.Frame(self.root, bg="#121417", height=80)
         top_frame.pack(fill=tk.X, padx=10, pady=8)
         top_frame.pack_propagate(False)
 
@@ -575,59 +619,66 @@ class NMHDesktopUI:
             orig = Image.open(logo_path)
             img = orig.resize((380, 68), Image.Resampling.LANCZOS)
             self.logo_photo = ImageTk.PhotoImage(img)
-            tk.Label(top_frame, image=self.logo_photo, bg="#181A1D").pack(side=tk.LEFT, padx=(0, 10))
+            tk.Label(top_frame, image=self.logo_photo, bg="#121417").pack(side=tk.LEFT, padx=(0, 10))
         except Exception:
             tk.Label(
-                top_frame,
-                text="NMH KARAOKE SYSTEM",
-                font=("Pyidaungsu", 18, "bold"),
-                fg="#00E5FF",
-                bg="#181A1D",
-                width=26,
+                top_frame, text="NMH KARAOKE SYSTEM", font=ART_FONT_LG,
+                fg="#00E5FF", bg="#121417", width=26
             ).pack(side=tk.LEFT, padx=(0, 10))
 
         self.lbl_playing = tk.Label(
-            top_frame, text="သီချင်းများ ဖတ်ရှုနေပါသည်...", font=("Pyidaungsu", 13, "bold"),
-            fg="#64FFDA", bg="#263238", anchor="w", padx=12
+            top_frame, text="သီချင်းများ ဖတ်ရှုနေပါသည်...", font=ART_FONT,
+            fg="#64FFDA", bg="#22282E", anchor="w", padx=12
         )
-        self.lbl_playing.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=10, pady=10)
+        self.lbl_playing.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 8), pady=10)
+
+        self.btn_drive = tk.Button(
+            top_frame, text=f"HDD: {BASE_DRIVE} ▾", font=ART_FONT_SM,
+            fg="#FFD740", bg="#37474F", padx=10, pady=6, command=self.choose_drive_dialog
+        )
+        self.btn_drive.pack(side=tk.RIGHT, padx=(0, 8))
 
         ip_text = f"IP: {get_local_ip()}"
         self.lbl_ip = tk.Label(
-            top_frame, text=ip_text, font=("Consolas", 14, "bold"),
-            fg="#FFFFFF", bg="#00695C", padx=16, pady=8
+            top_frame, text=ip_text, font=("Consolas", 13, "bold"),
+            fg="#FFFFFF", bg="#00695C", padx=14, pady=8
         )
-        self.lbl_ip.pack(side=tk.RIGHT, padx=10)
+        self.lbl_ip.pack(side=tk.RIGHT, padx=(0, 8))
 
-        body = tk.Frame(self.root, bg="#23272B")
+        body = tk.Frame(self.root, bg="#1A1D21")
         body.pack(fill=tk.BOTH, expand=True, padx=10, pady=4)
 
-        left_panel = tk.Frame(body, bg="#1C1F22", width=380, highlightbackground="#00BFA5", highlightthickness=1)
+        left_panel = tk.Frame(body, bg="#16191C", width=380, highlightbackground="#00BFA5", highlightthickness=1)
         left_panel.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 10))
         left_panel.pack_propagate(False)
 
         self.q_header = tk.Label(
-            left_panel, text="ရွေးထားသောသီချင်းများ (0)", font=("Pyidaungsu", 13, "bold"),
+            left_panel, text="ရွေးထားသောသီချင်းများ (0)", font=ART_FONT,
             fg="white", bg="#00695C", pady=8
         )
         self.q_header.pack(fill=tk.X)
 
         self.queue_listbox = tk.Listbox(
-            left_panel, bg="#1C1F22", fg="white", font=("Pyidaungsu", 12),
+            left_panel, bg="#16191C", fg="white", font=ART_FONT_SM,
             selectbackground="#00897B", borderwidth=0, highlightthickness=0
         )
         self.queue_listbox.pack(fill=tk.BOTH, expand=True, padx=6, pady=6)
 
-        q_btn_row = tk.Frame(left_panel, bg="#1C1F22")
+        q_btn_row = tk.Frame(left_panel, bg="#16191C")
         q_btn_row.pack(fill=tk.X, padx=6, pady=6)
-        tk.Button(q_btn_row, text="↑ ဦးစားပေး", font=("Pyidaungsu", 11, "bold"), bg="#2E7D32", fg="white", command=self.ui_priority).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=2)
-        tk.Button(q_btn_row, text="× ဖျက်မည်", font=("Pyidaungsu", 11, "bold"), bg="#C62828", fg="white", command=self.ui_remove).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=2)
+        tk.Button(q_btn_row, text="↑ ဦးစားပေး", font=ART_FONT_SM, bg="#2E7D32", fg="white", command=self.ui_priority).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=2)
+        tk.Button(q_btn_row, text="× ဖျက်မည်", font=ART_FONT_SM, bg="#C62828", fg="white", command=self.ui_remove).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=2)
 
-        self.right_panel = tk.Frame(body, bg="#2B2E33")
+        self.right_panel = tk.Frame(body, bg="#23272C")
         self.right_panel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
 
-        bottom_bar = tk.Frame(self.root, bg="#141618", height=54)
+        bottom_bar = tk.Frame(self.root, bg="#101214", height=56)
         bottom_bar.pack(fill=tk.X, padx=10, pady=(4, 8))
+
+        self.btn_vocal = tk.Button(
+            bottom_bar, text=f"Voice: {VOCAL_LABELS[vocal_mode]}", font=("Myanmar Sans Pro", 10, "bold"),
+            bg="#263238", fg="#FFD740", padx=8, pady=6, command=lambda: control_player("vocal_toggle")
+        )
 
         controls = [
             ("Play/Pause", "#FF4081", lambda: control_player("play_pause")),
@@ -638,58 +689,98 @@ class NMHDesktopUI:
             ("Re-Start", "#F50057", lambda: control_player("restart")),
             ("Next", "#F50057", lambda: control_player("next")),
             ("HOME", "#69F0AE", self.show_home_view),
-            ("Vocal", "#FFD740", lambda: control_player("vocal_toggle")),
+        ]
+        for text, col, cmd in controls:
+            tk.Button(
+                bottom_bar, text=text, font=("Myanmar Sans Pro", 10, "bold"),
+                bg="#263238", fg=col, padx=6, pady=6, command=cmd
+            ).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=2, pady=6)
+
+        self.btn_vocal.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=2, pady=6)
+
+        vol_controls = [
             ("Vol-", "#18FFFF", lambda: control_player("volume", max(0, player.audio_get_volume() - 10))),
             ("Vol+", "#18FFFF", lambda: control_player("volume", min(100, player.audio_get_volume() + 10))),
             ("Mute", "#90A4AE", lambda: control_player("volume", 0 if player.audio_get_volume() > 0 else 80)),
         ]
-        for text, col, cmd in controls:
+        for text, col, cmd in vol_controls:
             tk.Button(
-                bottom_bar, text=text, font=("Pyidaungsu", 10, "bold"),
+                bottom_bar, text=text, font=("Myanmar Sans Pro", 10, "bold"),
                 bg="#263238", fg=col, padx=6, pady=6, command=cmd
             ).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=2, pady=6)
 
         self.show_home_view()
+
+    def choose_drive_dialog(self):
+        folder = filedialog.askdirectory(title="သီချင်းဖိုင်များရှိသော HDD Drive ကို ရွေးချယ်ပါ")
+        if folder:
+            drv = os.path.splitdrive(folder) or folder
+            self.lbl_playing.config(text=f"Drive ({drv}) မှ သီချင်းများ ဖတ်ရှုနေပါသည်...")
+            threading.Thread(target=reload_drive, args=(drv,), daemon=True).start()
     def clear_right_panel(self):
         for w in self.right_panel.winfo_children():
             w.destroy()
+
+    def create_themed_card(self, parent, watermark: str, title: str, subtitle: str, bg_hex: str, accent_hex: str, cmd=None):
+        card = tk.Frame(parent, bg=bg_hex, highlightbackground=accent_hex, highlightthickness=2, cursor="hand2" if cmd else "arrow")
+        wm_lbl = tk.Label(
+            card, text=watermark, font=("Segoe UI Emoji", 44),
+            fg=accent_hex, bg=bg_hex
+        )
+        wm_lbl.place(relx=0.82, rely=0.28, anchor="center")
+
+        title_lbl = tk.Label(
+            card, text=title, font=("Myanmar Sans Pro", 15, "bold"),
+            fg="#FFFFFF", bg=bg_hex, justify=tk.CENTER
+        )
+        title_lbl.pack(expand=True, pady=(12, 2))
+
+        if subtitle:
+            sub_lbl = tk.Label(
+                card, text=subtitle, font=("Myanmar Sans Pro", 11, "bold"),
+                fg=accent_hex, bg=bg_hex
+            )
+            sub_lbl.pack(pady=(0, 10))
+
+        if cmd:
+            for w in (card, wm_lbl, title_lbl):
+                w.bind("<Button-1>", lambda e: cmd())
+        return card
 
     def show_home_view(self):
         self.screen_mode = "HOME"
         self.clear_right_panel()
 
-        top_cards = tk.Frame(self.right_panel, bg="#2B2E33")
+        top_cards = tk.Frame(self.right_panel, bg="#23272C")
         top_cards.pack(fill=tk.BOTH, expand=True, padx=12, pady=(14, 0))
 
-        mm_box = tk.Frame(top_cards, bg="#00796B", highlightbackground="#64FFDA", highlightthickness=2)
-        mm_box.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 8))
-        tk.Label(mm_box, text="မြန်မာသီချင်းများ\n(မြန်မာ)", font=("Pyidaungsu", 20, "bold"), fg="white", bg="#00796B").pack(expand=True)
-
-        disco_btn = tk.Button(
-            top_cards, text="💿\nDisco Song", font=("Pyidaungsu", 18, "bold"),
-            bg="#4527A0", fg="#FFD740", activebackground="#5E35B1",
-            command=lambda: self.show_list_view("DISCO", "Disco Songs")
+        mm_card = self.create_themed_card(
+            top_cards, "🎤🎶", "မြန်မာသီချင်းများ", "မြန်မာကာရာအိုကေ", "#00695C", "#64FFDA", cmd=None
         )
-        disco_btn.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(8, 0))
+        mm_card.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 8))
 
-        tree_canvas = tk.Canvas(self.right_panel, height=45, bg="#2B2E33", highlightthickness=0)
+        disco_card = self.create_themed_card(
+            top_cards, "💃🕺🪩", "Disco Song", "ကခုန်မြူးတူးတေးများ", "#4527A0", "#FFD740",
+            cmd=lambda: self.show_list_view("DISCO", "Disco Songs")
+        )
+        disco_card.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(8, 0))
+
+        tree_canvas = tk.Canvas(self.right_panel, height=45, bg="#23272C", highlightthickness=0)
         tree_canvas.pack(fill=tk.X, padx=12)
         tree_canvas.bind("<Configure>", self.draw_tree_lines)
 
-        sub_cards = tk.Frame(self.right_panel, bg="#2B2E33")
+        sub_cards = tk.Frame(self.right_panel, bg="#23272C")
         sub_cards.pack(fill=tk.BOTH, expand=True, padx=12, pady=(0, 14))
 
         sub_items = [
-            ("အဆိုတော်\nနာမည်နှင့်ရှာပါ", "#AD1457", lambda: self.show_list_view("ARTISTS", "အဆိုတော် စာရင်း")),
-            ("တေးစီးရီး\nနာမည်နှင့်ရှာပါ", "#EF6C00", lambda: self.show_list_view("ALBUMS", "တေးစီးရီး စာရင်း")),
-            ("သီချင်းနာမည်\nနှင့်ရှာပါ", "#1565C0", lambda: self.show_list_view("MYANMAR", "သီချင်းအမည် စာရင်း")),
-            ("သီချင်းနံပါတ်\nနှင့်ရှာပါ", "#00838F", self.show_numpad_view),
+            ("🧑‍🎤", "အဆိုတော်\nနာမည်နှင့်ရှာမည်", "#AD1457", "#F48FB1", lambda: self.show_list_view("ARTISTS", "အဆိုတော် စာရင်း")),
+            ("💿", "တေးစီးရီး\nနာမည်နှင့်ရှာမည်", "#E65100", "#FFCC80", lambda: self.show_list_view("ALBUMS", "တေးစီးရီး စာရင်း")),
+            ("🎼", "သီချင်းနာမည်\nနှင့်ရှာမည်", "#1565C0", "#90CAF9", lambda: self.show_list_view("MYANMAR", "သီချင်းအမည် စာရင်း")),
+            ("🔢", "သီချင်းနံပါတ်\nနှင့်ရှာမည်", "#00838F", "#80DEEA", self.show_numpad_view),
         ]
-        for label, bg_col, cmd in sub_items:
-            tk.Button(
-                sub_cards, text=label, font=("Pyidaungsu", 13, "bold"),
-                bg=bg_col, fg="white", command=cmd
-            ).pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5)
+        for wm, label, bg_col, acc_col, cmd in sub_items:
+            c = self.create_themed_card(sub_cards, wm, label, "", bg_col, acc_col, cmd=cmd)
+            c.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5)
 
     def draw_tree_lines(self, event):
         c = event.widget
@@ -702,31 +793,30 @@ class NMHDesktopUI:
         c.create_line(targets[0], mid_y, targets[-1], mid_y, fill="#64FFDA", width=2)
         for tx in targets:
             c.create_line(tx, mid_y, tx, h, fill="#64FFDA", width=2)
-
-    def show_numpad_view(self):
+            def show_numpad_view(self):
         self.screen_mode = "NUMPAD"
         self.num_input = ""
         self.clear_right_panel()
 
-        wrap = tk.Frame(self.right_panel, bg="#2B2E33")
+        wrap = tk.Frame(self.right_panel, bg="#23272C")
         wrap.pack(expand=True)
 
-        left_col = tk.Frame(wrap, bg="#2B2E33")
+        left_col = tk.Frame(wrap, bg="#23272C")
         left_col.pack(side=tk.LEFT, padx=20)
 
         self.lbl_num = tk.Label(
-            left_col, text="သီချင်းနံပါတ် ရိုက်ထည့်ပါ", font=("Pyidaungsu", 18, "bold"),
+            left_col, text="သီချင်းနံပါတ် ရိုက်ထည့်ပါ", font=ART_FONT_LG,
             fg="#FFD740", bg="#141618", width=20, pady=16
         )
         self.lbl_num.pack(pady=10)
 
-        btn_row = tk.Frame(left_col, bg="#2B2E33")
+        btn_row = tk.Frame(left_col, bg="#23272C")
         btn_row.pack(pady=8)
-        tk.Button(btn_row, text="← နောက်သို့", font=("Pyidaungsu", 12, "bold"), bg="#546E7A", fg="white", padx=12, pady=8, command=self.show_home_view).pack(side=tk.LEFT, padx=4)
-        tk.Button(btn_row, text="ဖျက်မည်", font=("Pyidaungsu", 12, "bold"), bg="#C62828", fg="white", padx=12, pady=8, command=self.num_backspace).pack(side=tk.LEFT, padx=4)
-        tk.Button(btn_row, text="ထည့်မည်", font=("Pyidaungsu", 12, "bold"), bg="#2E7D32", fg="white", padx=14, pady=8, command=self.num_submit).pack(side=tk.LEFT, padx=4)
+        tk.Button(btn_row, text="← နောက်သို့", font=ART_FONT_SM, bg="#546E7A", fg="white", padx=12, pady=8, command=self.show_home_view).pack(side=tk.LEFT, padx=4)
+        tk.Button(btn_row, text="ဖျက်မည်", font=ART_FONT_SM, bg="#C62828", fg="white", padx=12, pady=8, command=self.num_backspace).pack(side=tk.LEFT, padx=4)
+        tk.Button(btn_row, text="ထည့်မည်", font=ART_FONT_SM, bg="#2E7D32", fg="white", padx=14, pady=8, command=self.num_submit).pack(side=tk.LEFT, padx=4)
 
-        pad_frame = tk.Frame(wrap, bg="#2B2E33")
+        pad_frame = tk.Frame(wrap, bg="#23272C")
         pad_frame.pack(side=tk.RIGHT, padx=20)
         keys = [["1", "2", "3"], ["4", "5", "6"], ["7", "8", "9"], ["C", "0", "OK"]]
         for r, row_keys in enumerate(keys):
@@ -757,8 +847,7 @@ class NMHDesktopUI:
             except Exception:
                 pass
             self.num_input = ""
-            self.lbl_num.config(text="သီချင်းနံပါတ် ရိုက်ထည့်ပါ")
-    def show_list_view(self, mode: str, title: str, filter_val: str = ""):
+            se    def show_list_view(self, mode: str, title: str, filter_val: str = ""):
         self.screen_mode = mode
         self.filter_val = filter_val
         self.clear_right_panel()
@@ -766,15 +855,15 @@ class NMHDesktopUI:
         top = tk.Frame(self.right_panel, bg="#181A1D", pady=6)
         top.pack(fill=tk.X)
 
-        tk.Button(top, text="← HOME", font=("Pyidaungsu", 11, "bold"), bg="#00796B", fg="white", padx=10, command=self.show_home_view).pack(side=tk.LEFT, padx=8)
-        tk.Label(top, text=title, font=("Pyidaungsu", 14, "bold"), fg="#FFD740", bg="#181A1D").pack(side=tk.LEFT, padx=10)
+        tk.Button(top, text="← HOME", font=ART_FONT_SM, bg="#00796B", fg="white", padx=10, command=self.show_home_view).pack(side=tk.LEFT, padx=8)
+        tk.Label(top, text=title, font=ART_FONT, fg="#FFD740", bg="#181A1D").pack(side=tk.LEFT, padx=10)
 
         self.search_var = tk.StringVar()
         self.search_var.trace_add("write", lambda *args: self.populate_list())
-        tk.Entry(top, textvariable=self.search_var, font=("Pyidaungsu", 13), bg="#37474F", fg="white", insertbackground="white", width=26).pack(side=tk.RIGHT, padx=10)
-        tk.Label(top, text="ရှာရန်:", font=("Pyidaungsu", 12), fg="#B0BEC5", bg="#181A1D").pack(side=tk.RIGHT)
+        tk.Entry(top, textvariable=self.search_var, font=ART_FONT, bg="#37474F", fg="white", insertbackground="white", width=26).pack(side=tk.RIGHT, padx=10)
+        tk.Label(top, text="ရှာမည်:", font=ART_FONT_SM, fg="#B0BEC5", bg="#181A1D").pack(side=tk.RIGHT)
 
-        self.listbox = tk.Listbox(self.right_panel, bg="#1E2226", fg="white", font=("Pyidaungsu", 12), selectbackground="#00796B")
+        self.listbox = tk.Listbox(self.right_panel, bg="#1E2226", fg="white", font=ART_FONT_SM, selectbackground="#00796B")
         self.listbox.pack(fill=tk.BOTH, expand=True, padx=8, pady=6)
         self.listbox.bind("<Double-Button-1>", self.on_list_double_click)
         self.populate_list()
@@ -812,7 +901,7 @@ class NMHDesktopUI:
         sel = self.listbox.curselection()
         if not sel:
             return
-        kind, data = self.displayed_items[sel[0]]
+        kind, data = self.displayed_items[sel]
         if kind == "ARTIST":
             self.show_list_view("FILTER_ARTIST", data, filter_val=data)
         elif kind == "ALBUM":
@@ -826,22 +915,25 @@ class NMHDesktopUI:
     def ui_priority(self):
         sel = self.queue_listbox.curselection()
         if sel:
-            priority_queue(sel[0])
+            priority_queue(sel)
 
     def ui_remove(self):
         sel = self.queue_listbox.curselection()
         if sel:
-            remove_from_queue(sel[0])
+            remove_from_queue(sel)
 
     def refresh_loop(self):
         total_cnt = len(songs_db)
+        self.btn_drive.config(text=f"HDD: {BASE_DRIVE} ▾")
+        self.btn_vocal.config(text=f"Voice: {VOCAL_LABELS[vocal_mode]}")
+
         if current_song:
             art = f" - {current_song['artist']}" if current_song.get("artist") else ""
             self.lbl_playing.config(text=f"Playing: [{current_song['code']}] {current_song['title']}{art}")
         elif total_cnt > 0:
-            self.lbl_playing.config(text=f"အသင့်ဖြစ်ပါပြီ (စုစုပေါင်း သီချင်း {total_cnt} ပုဒ်)")
+            self.lbl_playing.config(text=f"အသင့်ဖြစ်ပါပြီ ({BASE_DRIVE} မှ သီချင်း {total_cnt} ပုဒ်)")
         else:
-            self.lbl_playing.config(text="J:\\ မှ သီချင်းများ ဖတ်ရှုနေပါသည်...")
+            self.lbl_playing.config(text=f"{BASE_DRIVE} မှ သီချင်းများ ဖတ်ရှုနေပါသည်...")
 
         q_list = list(song_queue)
         self.q_header.config(text=f"ရွေးထားသောသီချင်းများ ({len(q_list)})")
@@ -873,3 +965,5 @@ if __name__ == "__main__":
     root = tk.Tk()
     ui = NMHDesktopUI(root)
     root.mainloop()
+                lf.lbl_num.config(text="သီချင်းနံပါတ် ရိုက်ထည့်ပါ")
+            

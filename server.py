@@ -871,7 +871,8 @@ class NMHDesktopUI:
 
         self.listbox = tk.Listbox(self.right_panel, bg="#1E2226", fg="white", font=ART_FONT_SM, selectbackground="#00796B")
         self.listbox.pack(fill=tk.BOTH, expand=True, padx=8, pady=6)
-        self.listbox.bind("<Double-Button-1>", self.on_list_double_click)
+        self.listbox.bind("<<ListboxSelect>>", self.on_list_select)
+        self.listbox.bind("<Return>", self.on_list_select)
         self.populate_list()
 
     def populate_list(self):
@@ -903,11 +904,12 @@ class NMHDesktopUI:
                 art = f" - {s['artist']}" if s["artist"] else ""
                 self.listbox.insert(tk.END, f" {mark} [{s['code']}]  {s['title']}{art}")
 
-    def on_list_double_click(self, event):
+    def on_list_select(self, event=None):
         sel = self.listbox.curselection()
         if not sel:
             return
-        kind, data = self.displayed_items[sel]
+        idx = sel.__getitem__(0)
+        kind, data = self.displayed_items.__getitem__(idx)
         if kind == "ARTIST":
             self.show_list_view("FILTER_ARTIST", data, filter_val=data)
         elif kind == "ALBUM":
@@ -921,12 +923,13 @@ class NMHDesktopUI:
     def ui_priority(self):
         sel = self.queue_listbox.curselection()
         if sel:
-            priority_queue(sel)
+            priority_queue(sel.__getitem__(0))
 
     def ui_remove(self):
         sel = self.queue_listbox.curselection()
         if sel:
-            remove_from_queue(sel)
+            remove_from_queue(sel.__getitem__(0))
+            
 
     def refresh_loop(self):
         total_cnt = len(songs_db)

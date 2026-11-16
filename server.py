@@ -668,7 +668,8 @@ class NMHDesktopUI:
 
         q_btn_row = tk.Frame(left_panel, bg="#16191C")
         q_btn_row.pack(fill=tk.X, padx=6, pady=6)
-        tk.Button(q_btn_row, text="↑ ဦးစားပေး", font=ART_FONT_SM, bg="#2E7D32", fg="white", command=self.ui_priority).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=2)
+        tk.Button(q_btn_row, text="↑ အပေါ်ရွှေ့", font=ART_FONT_SM, bg="#2E7D32", fg="white", command=self.ui_priority).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=2)
+        tk.Button(q_btn_row, text="↓ အောက်ရွှေ့", font=ART_FONT_SM, bg="#1565C0", fg="white", command=self.ui_move_down).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=2)
         tk.Button(q_btn_row, text="× ဖျက်မည်", font=ART_FONT_SM, bg="#C62828", fg="white", command=self.ui_remove).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=2)
 
         self.right_panel = tk.Frame(body, bg="#23272C")
@@ -923,13 +924,40 @@ class NMHDesktopUI:
     def ui_priority(self):
         sel = self.queue_listbox.curselection()
         if sel:
-            priority_queue(sel.__getitem__(0))
+            idx = sel.__getitem__(0)
+            priority_queue(idx)
+            self.force_refresh_queue()
+            if self.queue_listbox.size() > 0:
+                self.queue_listbox.selection_set(0)
+
+    def ui_move_down(self):
+        sel = self.queue_listbox.curselection()
+        if sel:
+            idx = sel.__getitem__(0)
+            q_list = list(song_queue)
+            if 0 <= idx < len(q_list) - 1:
+                a = q_list.__getitem__(idx)
+                b = q_list.__getitem__(idx + 1)
+                q_list.__setitem__(idx, b)
+                q_list.__setitem__(idx + 1, a)
+                song_queue.clear()
+                song_queue.extend(q_list)
+                self.force_refresh_queue()
+                self.queue_listbox.selection_set(idx + 1)
 
     def ui_remove(self):
         sel = self.queue_listbox.curselection()
         if sel:
             remove_from_queue(sel.__getitem__(0))
-            
+            self.force_refresh_queue()
+
+    def force_refresh_queue(self):
+        q_list = list(song_queue)
+        self._last_queue_sig = [item["id"] for item in q_list]
+        self.q_header.config(text=f"ရွေးထားသောသီချင်းများ ({len(q_list)})")
+        self.queue_listbox.delete(0, tk.END)
+        for idx, item in enumerate(q_list):
+            self.queue_listbox.insert(tk.END, f" {idx + 1}. [{item['code']}] {item['title']}")
 
     def refresh_loop(self):
         total_cnt = len(songs_db)
@@ -945,11 +973,9 @@ class NMHDesktopUI:
             self.lbl_playing.config(text=f"{BASE_DRIVE} မှ သီချင်းများ ဖတ်ရှုနေပါသည်...")
 
         q_list = list(song_queue)
-        self.q_header.config(text=f"ရွေးထားသောသီချင်းများ ({len(q_list)})")
-        if self.queue_listbox.size() != len(q_list):
-            self.queue_listbox.delete(0, tk.END)
-            for idx, item in enumerate(q_list):
-                self.queue_listbox.insert(tk.END, f" {idx + 1}. [{item['code']}] {item['title']}")
+        q_sig = [item["id"] for item in q_list]
+        if getattr(self, "_last_queue_sig", None) != q_sig:
+            self.force_refresh_queue()
 
         if total_cnt > 0 and hasattr(self, "listbox") and self.listbox.winfo_exists():
             if self.listbox.size() == 0 and self.search_var.get() == "":

@@ -535,12 +535,14 @@ def add_to_queue(song_id: str):
     return {"message": "Added to queue", "queue_count": len(song_queue)}
 
 
-@app.post("/queue/priority/{index}")
-def priority_queue(index: int):
+@app.post("/queue/move_down/{index}")
+def move_down_queue(index: int):
     q_list = list(song_queue)
-    if 0 <= index < len(q_list):
-        item = q_list.pop(index)
-        q_list.insert(0, item)
+    if 0 <= index < len(q_list) - 1:
+        a = q_list.__getitem__(index)
+        b = q_list.__getitem__(index + 1)
+        q_list.__setitem__(index, b)
+        q_list.__setitem__(index + 1, a)
         song_queue.clear()
         song_queue.extend(q_list)
     return {"queue_count": len(song_queue)}
@@ -892,11 +894,17 @@ class NMHDesktopUI:
         elif self.screen_mode == "FILTER_ARTIST":
             for s in browse_filter(artist=self.filter_val, offset=0, limit=5000):
                 self.displayed_items.append(("SONG", s))
-                self.listbox.insert(tk.END, f" [{s['code']}]  {s['title']} - {s['artist']}")
+                mark = "✔" if s["has_file"] else "✖"
+                self.listbox.insert(tk.END, f" {mark} [{s['code']}]  {s['title']} - {s['artist']}")
+                if not s["has_file"]:
+                    self.listbox.itemconfig(tk.END, fg="#78909C")
         elif self.screen_mode == "FILTER_ALBUM":
             for s in browse_filter(album=self.filter_val, offset=0, limit=5000):
                 self.displayed_items.append(("SONG", s))
-                self.listbox.insert(tk.END, f" [{s['code']}]  {s['title']} - {s['artist']}")
+                mark = "✔" if s["has_file"] else "✖"
+                self.listbox.insert(tk.END, f" {mark} [{s['code']}]  {s['title']} - {s['artist']}")
+                if not s["has_file"]:
+                    self.listbox.itemconfig(tk.END, fg="#78909C")
         else:
             cat = "DISCO" if self.screen_mode == "DISCO" else "MYANMAR"
             for s in search_songs(q=q, category=cat, offset=0, limit=50000):
@@ -904,6 +912,9 @@ class NMHDesktopUI:
                 mark = "✔" if s["has_file"] else "✖"
                 art = f" - {s['artist']}" if s["artist"] else ""
                 self.listbox.insert(tk.END, f" {mark} [{s['code']}]  {s['title']}{art}")
+                if not s["has_file"]:
+                    self.listbox.itemconfig(tk.END, fg="#78909C")
+
 
     def on_list_select(self, event=None):
         sel = self.listbox.curselection()

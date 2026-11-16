@@ -316,7 +316,8 @@ def reload_drive(new_drive: str):
     BASE_DRIVE = new_drive
     scan_videos()
     load_databases()
-                                    vlc_instance = vlc.Instance("--no-video-title-show", "--fullscreen")
+
+vlc_instance = vlc.Instance("--no-video-title-show", "--fullscreen")
 player = vlc_instance.media_player_new()
 player.set_fullscreen(True)
 
@@ -488,6 +489,7 @@ def browse_filter(
         elif album and s["album"] == album:
             results.append(s)
     return results[offset : offset + limit]
+
 @app.get("/queue")
 def get_queue():
     return list(song_queue)
@@ -717,6 +719,7 @@ class NMHDesktopUI:
             drv = os.path.splitdrive(folder) or folder
             self.lbl_playing.config(text=f"Drive ({drv}) မှ သီချင်းများ ဖတ်ရှုနေပါသည်...")
             threading.Thread(target=reload_drive, args=(drv,), daemon=True).start()
+
     def clear_right_panel(self):
         for w in self.right_panel.winfo_children():
             w.destroy()
@@ -793,7 +796,8 @@ class NMHDesktopUI:
         c.create_line(targets[0], mid_y, targets[-1], mid_y, fill="#64FFDA", width=2)
         for tx in targets:
             c.create_line(tx, mid_y, tx, h, fill="#64FFDA", width=2)
-            def show_numpad_view(self):
+    
+    def show_numpad_view(self):
         self.screen_mode = "NUMPAD"
         self.num_input = ""
         self.clear_right_panel()
@@ -847,7 +851,9 @@ class NMHDesktopUI:
             except Exception:
                 pass
             self.num_input = ""
-            se    def show_list_view(self, mode: str, title: str, filter_val: str = ""):
+            self.lbl_num.config(text="သီချင်းနံပါတ် ရိုက်ထည့်ပါ")
+
+    def show_list_view(self, mode: str, title: str, filter_val: str = ""):
         self.screen_mode = mode
         self.filter_val = filter_val
         self.clear_right_panel()
@@ -965,5 +971,4 @@ if __name__ == "__main__":
     root = tk.Tk()
     ui = NMHDesktopUI(root)
     root.mainloop()
-                lf.lbl_num.config(text="သီချင်းနံပါတ် ရိုက်ထည့်ပါ")
-            
+    

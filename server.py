@@ -573,16 +573,18 @@ class NMHDesktopUI:
         try:
             logo_path = resource_path("image_afebac29.jpg")
             orig = Image.open(logo_path)
-            ratio = 68 / orig.height
-            new_w = int(orig.width * ratio)
-            img = orig.resize((new_w, 68), Image.Resampling.LANCZOS)
+            img = orig.resize((380, 68), Image.Resampling.LANCZOS)
             self.logo_photo = ImageTk.PhotoImage(img)
-            tk.Label(top_frame, image=self.logo_photo, bg="#181A1D").pack(side=tk.LEFT, padx=10)
+            tk.Label(top_frame, image=self.logo_photo, bg="#181A1D").pack(side=tk.LEFT, padx=(0, 10))
         except Exception:
             tk.Label(
-                top_frame, text="NMH KARAOKE SYSTEM", font=("Pyidaungsu", 18, "bold"),
-                fg="#00E5FF", bg="#181A1D"
-            ).pack(side=tk.LEFT, padx=15)
+                top_frame,
+                text="NMH KARAOKE SYSTEM",
+                font=("Pyidaungsu", 18, "bold"),
+                fg="#00E5FF",
+                bg="#181A1D",
+                width=26,
+            ).pack(side=tk.LEFT, padx=(0, 10))
 
         self.lbl_playing = tk.Label(
             top_frame, text="သီချင်းများ ဖတ်ရှုနေပါသည်...", font=("Pyidaungsu", 13, "bold"),
